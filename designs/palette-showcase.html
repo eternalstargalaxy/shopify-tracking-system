@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ParcelPilot Palette Showcase</title>
+    <link rel="stylesheet" href="palette-showcase.css" />
+  </head>
+  <body>
+    <header class="palette-header">
+      <a class="palette-brand" href="index.html" aria-label="返回基础版">
+        <span class="palette-brand-mark">PP</span>
+        <span>ParcelPilot Palette Select</span>
+      </a>
+      <nav class="palette-tabs" aria-label="页面色调">
+        <button class="is-active" type="button" data-target="ivory">Ivory</button>
+        <button type="button" data-target="blush">Blush</button>
+        <button type="button" data-target="mist">Mist</button>
+        <button type="button" data-target="sage">Sage</button>
+        <button type="button" data-target="peach">Peach</button>
+        <button type="button" data-target="champagne">Champagne</button>
+        <button type="button" data-target="sky">Sky</button>
+        <button type="button" data-target="linen">Linen</button>
+        <button type="button" data-target="coral">Coral</button>
+        <button type="button" data-target="graphite">Graphite</button>
+      </nav>
+    </header>
+
+    <main class="palette-stage">
+      <section class="palette-page ivory is-active" id="ivory" aria-label="Ivory">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Global</span><span class="pill">Retail</span></div>
+          </header>
+          <section class="hero-layout">
+            <form class="concept-form query-panel">
+              <label><span>Tracking</span><textarea name="tracking" rows="4">RJ556381428CN&#10;LN328306902US</textarea></label>
+              <div class="action-row">
+                <select name="carrier"><option>自动识别</option><option>China Post</option><option>USPS</option></select>
+                <button type="submit">Track</button>
+              </div>
+            </form>
+            <article class="focus-panel">
+              <div class="status-row"><div><span>China Post</span><h2 data-number>RJ556381428CN</h2></div><strong class="badge transit">In transit</strong></div>
+              <div class="metric-row"><div><span>ETA</span><strong>May 02</strong></div><div><span>Route</span><strong>CN to US</strong></div><div><span>Updated</span><strong>16 min</strong></div></div>
+              <div class="track-line"><span></span></div>
+              <div class="step-row"><span>Booked</span><span>Picked up</span><span class="active">In transit</span><span>Delivered</span></div>
+            </article>
+          </section>
+          <section class="content-layout">
+            <article class="surface timeline-panel">
+              <div class="section-head"><h3>Updates</h3><span>04/29</span></div>
+              <ol class="events"><li><time>16:20</time><span>Arrived at destination sorting center</span></li><li><time>08:45</time><span>Flight landed, awaiting customs release</span></li><li><time>04/28</time><span>Carrier accepted shipment</span></li></ol>
+            </article>
+            <aside class="stack">
+              <article class="surface compact-panel"><div class="mini-grid"><div><span>Transit</span><strong>92</strong></div><div><span>Delivered</span><strong>24</strong></div><div><span>Delayed</span><strong>5</strong></div><div><span>Pending</span><strong>2</strong></div></div></article>
+              <article class="surface note-panel"><div class="section-head"><h3>Status</h3><span>Stable</span></div><ul class="mini-list"><li>Destination handoff queued</li><li>Carrier sync normal</li><li>Low delay risk</li></ul></article>
+            </aside>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page blush" id="blush" aria-label="Blush">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark serif" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Care</span></div>
+          </header>
+          <section class="split-layout">
+            <article class="focus-panel hero-panel">
+              <div class="status-row"><div><span>YunExpress</span><h2 data-number>YT2423821266000001</h2></div><strong class="badge warn">Out for delivery</strong></div>
+              <div class="notice">Expected today before 8:00 PM</div>
+              <div class="metric-row"><div><span>Courier</span><strong>Last mile</strong></div><div><span>Area</span><strong>San Diego</strong></div><div><span>Window</span><strong>Today</strong></div></div>
+            </article>
+            <form class="concept-form query-panel slim">
+              <label><span>Tracking</span><input name="tracking" value="YT2423821266000001" /></label>
+              <label><span>Carrier</span><select name="carrier"><option>YunExpress</option><option>自动识别</option><option>UPS</option></select></label>
+              <button type="submit">Check</button>
+            </form>
+          </section>
+          <section class="content-layout">
+            <article class="surface timeline-panel">
+              <div class="section-head"><h3>Shipment history</h3><span>Today</span></div>
+              <ol class="events"><li><time>14:12</time><span>Package reached local service station</span></li><li><time>04/28</time><span>Customs clearance completed</span></li><li><time>04/27</time><span>International movement in progress</span></li></ol>
+            </article>
+            <article class="surface compact-panel"><div class="mini-grid"><div><span>Booked</span><strong>04/26</strong></div><div><span>Carrier</span><strong>YunExpress</strong></div><div><span>Current</span><strong>Last mile</strong></div><div><span>Support</span><strong>Low WISMO</strong></div></div></article>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page mist" id="mist" aria-label="Mist">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <nav class="inline-links"><a href="#">Tracking</a><a href="#">Orders</a><a href="#">Exceptions</a></nav>
+          </header>
+          <section class="board-layout">
+            <form class="concept-form query-panel slim">
+              <label><span>Lookup</span><input name="tracking" value="SF145702998CN" /></label>
+              <select name="carrier"><option>SF Express</option><option>自动识别</option></select>
+              <button type="submit">Search</button>
+            </form>
+            <article class="focus-panel table-panel">
+              <div class="status-row"><div><span>SF Express</span><h2 data-number>SF145702998CN</h2></div><strong class="badge transit">On schedule</strong></div>
+              <div class="metric-row"><div><span>Origin</span><strong>Shenzhen</strong></div><div><span>Destination</span><strong>Chicago</strong></div><div><span>ETA</span><strong>May 01</strong></div></div>
+              <div class="table-wrap">
+                <div class="data-row head"><span>Time</span><span>Checkpoint</span><span>Region</span></div>
+                <div class="data-row"><span>16:29</span><strong>Departed transit center</strong><span>Hong Kong</span></div>
+                <div class="data-row"><span>10:05</span><strong>Arrived at processing facility</strong><span>Shenzhen</span></div>
+                <div class="data-row"><span>04/28</span><strong>Customs pre-clearance completed</strong><span>CN Export</span></div>
+              </div>
+            </article>
+            <aside class="surface compact-panel"><div class="section-head"><h3>Overview</h3><span>Live</span></div><div class="mini-grid"><div><span>Transit</span><strong>128</strong></div><div><span>Delivered</span><strong>41</strong></div><div><span>Alerts</span><strong>7</strong></div><div><span>ETA drift</span><strong>1.2h</strong></div></div></aside>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page sage" id="sage" aria-label="Sage">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">B2B</span><span class="pill">Warehouse</span></div>
+          </header>
+          <section class="hero-layout">
+            <article class="focus-panel">
+              <div class="status-row"><div><span>USPS</span><h2 data-number>LN328306902US</h2></div><strong class="badge transit">Customs</strong></div>
+              <div class="metric-row"><div><span>ETA</span><strong>May 03</strong></div><div><span>Transit</span><strong>4 days</strong></div><div><span>Sync</span><strong>8 min</strong></div></div>
+              <ol class="events short"><li><time>15:06</time><span>Arrived at destination hub</span></li><li><time>03:18</time><span>Customs clearance started</span></li><li><time>04/28</time><span>Flight departed</span></li></ol>
+            </article>
+            <form class="concept-form query-panel">
+              <label><span>Tracking</span><textarea name="tracking" rows="4">LN328306902US&#10;3861078222</textarea></label>
+              <div class="action-row"><select name="carrier"><option>USPS</option><option>自动识别</option><option>DHL Express</option></select><button type="submit">Track</button></div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page peach" id="peach" aria-label="Peach">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Order tracking</span></div>
+          </header>
+          <section class="content-layout single-focus">
+            <article class="focus-panel wide-focus">
+              <div class="status-row"><div><span>UPS</span><h2 data-number>1Z999AA10123456784</h2></div><strong class="badge done">Delivered</strong></div>
+              <div class="notice success">Delivered at front desk on Apr 29, 12:08 PM.</div>
+              <div class="metric-row"><div><span>Transit</span><strong>6 days</strong></div><div><span>Signed by</span><strong>Front desk</strong></div><div><span>Service</span><strong>Ground</strong></div></div>
+              <div class="content-layout inner-split">
+                <form class="concept-form query-panel slim">
+                  <label><span>Tracking</span><input name="tracking" value="1Z999AA10123456784" /></label>
+                  <select name="carrier"><option>UPS</option><option>自动识别</option><option>USPS</option></select>
+                  <button type="submit">Track</button>
+                </form>
+                <article class="surface timeline-panel">
+                  <div class="section-head"><h3>Latest events</h3><span>3</span></div>
+                  <ol class="events"><li><time>12:08</time><span>Delivered and signed</span></li><li><time>09:15</time><span>Courier out for delivery</span></li><li><time>04/28</time><span>Arrived at local distribution center</span></li></ol>
+                </article>
+              </div>
+            </article>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page champagne" id="champagne" aria-label="Champagne">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark serif" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Premium</span></div>
+          </header>
+          <section class="split-layout">
+            <form class="concept-form query-panel">
+              <label><span>Tracking</span><textarea name="tracking" rows="4">RJ556381428CN&#10;YT2423821266000001</textarea></label>
+              <div class="action-row"><select name="carrier"><option>自动识别</option><option>China Post</option><option>YunExpress</option></select><button type="submit">Check</button></div>
+            </form>
+            <article class="focus-panel hero-panel">
+              <div class="status-row"><div><span>China Post</span><h2 data-number>RJ556381428CN</h2></div><strong class="badge transit">In transit</strong></div>
+              <div class="track-line"><span></span></div>
+              <div class="step-row"><span>Booked</span><span>Picked up</span><span class="active">In transit</span><span>Delivered</span></div>
+              <div class="metric-row"><div><span>Hub</span><strong>Los Angeles</strong></div><div><span>Delay risk</span><strong>Low</strong></div><div><span>ETA</span><strong>May 02</strong></div></div>
+            </article>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page sky" id="sky" aria-label="Sky">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <nav class="inline-links"><a href="#">Tracking</a><a href="#">Support</a><a href="#">API</a></nav>
+          </header>
+          <section class="content-layout">
+            <article class="surface timeline-panel">
+              <div class="section-head"><h3>Today</h3><span>04/29</span></div>
+              <ol class="events"><li><time>16:20</time><span>Arrived at destination sorting center</span></li><li><time>08:45</time><span>Flight landed, awaiting customs release</span></li><li><time>04/28</time><span>Carrier accepted shipment</span></li></ol>
+            </article>
+            <article class="focus-panel large-card">
+              <div class="status-row"><div><span>China Post</span><h2 data-number>RJ556381428CN</h2></div><strong class="badge transit">In transit</strong></div>
+              <div class="metric-row"><div><span>ETA</span><strong>May 02</strong></div><div><span>Route</span><strong>CN to US</strong></div><div><span>Updated</span><strong>16 min</strong></div></div>
+              <form class="concept-form query-inline">
+                <input name="tracking" value="RJ556381428CN" />
+                <select name="carrier"><option>China Post</option><option>自动识别</option></select>
+                <button type="submit">Track</button>
+              </form>
+            </article>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page linen" id="linen" aria-label="Linen">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark serif" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Neutral</span></div>
+          </header>
+          <section class="hero-layout">
+            <form class="concept-form query-panel">
+              <label><span>Tracking</span><textarea name="tracking" rows="4">DHL003920145770&#10;SF145702998CN</textarea></label>
+              <div class="action-row"><select name="carrier"><option>自动识别</option><option>DHL Express</option><option>SF Express</option></select><button type="submit">Search</button></div>
+            </form>
+            <article class="focus-panel">
+              <div class="status-row"><div><span>DHL Express</span><h2 data-number>DHL003920145770</h2></div><strong class="badge danger">Action needed</strong></div>
+              <div class="notice">Address verification is required before final delivery.</div>
+              <div class="metric-row"><div><span>Node</span><strong>LAX-03</strong></div><div><span>Hold</span><strong>18h</strong></div><div><span>Risk</span><strong>Medium</strong></div></div>
+            </article>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page coral" id="coral" aria-label="Coral">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Support</span><span class="pill">Buyer view</span></div>
+          </header>
+          <section class="board-layout two-wide">
+            <article class="focus-panel wide-focus">
+              <div class="status-row"><div><span>YunExpress</span><h2 data-number>YT2423821266000001</h2></div><strong class="badge warn">Out for delivery</strong></div>
+              <div class="notice warm">Expected today before 8:00 PM</div>
+              <ol class="events short"><li><time>14:12</time><span>Package reached local service station</span></li><li><time>04/28</time><span>Customs clearance completed</span></li><li><time>04/27</time><span>International movement in progress</span></li></ol>
+            </article>
+            <form class="concept-form query-panel slim">
+              <label><span>Tracking</span><input name="tracking" value="YT2423821266000001" /></label>
+              <select name="carrier"><option>YunExpress</option><option>自动识别</option></select>
+              <button type="submit">Open</button>
+            </form>
+            <aside class="surface compact-panel"><div class="mini-grid"><div><span>Promise</span><strong>Today</strong></div><div><span>Carrier</span><strong>YunExpress</strong></div><div><span>Exceptions</span><strong>0</strong></div><div><span>Support</span><strong>Light</strong></div></div></aside>
+          </section>
+        </div>
+      </section>
+
+      <section class="palette-page graphite" id="graphite" aria-label="Graphite">
+        <div class="showcase-shell">
+          <header class="app-bar">
+            <a class="app-wordmark" href="#">ParcelPilot</a>
+            <div class="bar-actions"><span class="pill">Dark option</span></div>
+          </header>
+          <section class="full-dark">
+            <article class="focus-panel dark-focus">
+              <div class="status-row"><div><span>UPS</span><h2 data-number>1Z999AA10123456784</h2></div><strong class="badge done">Delivered</strong></div>
+              <div class="notice success">Delivered at front desk on Apr 29, 12:08 PM.</div>
+              <div class="metric-row"><div><span>Transit</span><strong>6 days</strong></div><div><span>Signed by</span><strong>Front desk</strong></div><div><span>Service</span><strong>Ground</strong></div></div>
+            </article>
+            <form class="concept-form query-panel slim dark-query">
+              <label><span>Tracking</span><input name="tracking" value="1Z999AA10123456784" /></label>
+              <select name="carrier"><option>UPS</option><option>自动识别</option></select>
+              <button type="submit">Track</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="palette-showcase.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: parcelpilot-tracking-api
+    runtime: python
+    plan: starter
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: APP_NAME
+        value: parcelpilot-tracking
+      - key: DATABASE_PATH
+        value: /var/data/tracking.sqlite3
+      - key: SHOPIFY_PROXY_PREFIX
+        value: /apps/track/api/track
+      - key: REQUIRE_ORDER_TRACKING_MATCH
+        value: true
+      - key: BYPASS_PROXY_SIGNATURE
+        value: false
+      - key: MOCK_WHEN_API_KEY_MISSING
+        value: false
+      - key: IP_LIMIT_PER_MINUTE
+        value: 30
+      - key: IP_LIMIT_PER_DAY
+        value: 300
+      - key: TRACKING_REFRESH_WINDOW_SECONDS
+        value: 300
+      - key: TRACKING_REFRESH_LIMIT
+        value: 3
+      - key: CACHE_TTL_ACTIVE_MINUTES
+        value: 120
+      - key: CACHE_TTL_DELIVERED_HOURS
+        value: 72
+      - key: CACHE_TTL_NOT_FOUND_HOURS
+        value: 6
+      - key: CACHE_TTL_EXCEPTION_MINUTES
+        value: 60
+      - key: HMAC_MAX_AGE_SECONDS
+        value: 300
+      - key: SHOPIFY_APP_SECRET
+        sync: false
+      - key: ALLOWED_SHOP_DOMAINS
+        sync: false
+      - key: SEVENTEEN_TRACK_API_KEY
+        sync: false
+    disk:
+      name: tracking-data
+      mountPath: /var/data
+      sizeGB: 1

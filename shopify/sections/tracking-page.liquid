@@ -1,0 +1,120 @@
+{{ 'tracking.css' | asset_url | stylesheet_tag }}
+
+<section class="tracking-page" data-section-id="{{ section.id }}">
+  <script>
+    window.TRACKING_CONFIG = {
+      apiEndpoint: {{ section.settings.proxy_path | json }},
+      demoMode: false
+    };
+  </script>
+
+  <div class="tracking-shell">
+    <div class="tracking-header">
+      <h1>{{ section.settings.heading }}</h1>
+    </div>
+
+    <div class="tracking-layout">
+      <form id="trackingForm" class="tracking-query" novalidate>
+        <label class="tracking-field">
+          <span>Tracking number</span>
+          <textarea
+            id="trackingNumbers"
+            name="trackingNumbers"
+            rows="5"
+            spellcheck="false"
+            placeholder="YT2610601001467359"
+          ></textarea>
+        </label>
+
+        <div class="tracking-actions">
+          <label class="tracking-field">
+            <span>Carrier</span>
+            <select id="carrierSelect" name="carrier">
+              <option value="">Auto detect</option>
+              <option value="21051">USPS</option>
+              <option value="dhl-express">DHL Express</option>
+              <option value="fedex">FedEx</option>
+              <option value="ups">UPS</option>
+              <option value="china-post">China Post</option>
+              <option value="yunexpress">YunExpress</option>
+              <option value="sf-express">SF Express</option>
+              <option value="4px">4PX</option>
+            </select>
+          </label>
+          <button type="submit" id="trackBtn" class="tracking-button">Track</button>
+        </div>
+
+        <p id="formMessage" class="tracking-message" role="status" aria-live="polite"></p>
+      </form>
+
+      <section class="tracking-result">
+        <div class="tracking-empty" id="emptyState">
+          Enter a tracking number to check shipment status.
+        </div>
+        <div class="tracking-result-list" id="resultsList"></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<template id="shipmentTemplate">
+  <article class="shipment-card">
+    <div class="shipment-head">
+      <div>
+        <span class="carrier-name"></span>
+        <h2 class="tracking-number"></h2>
+      </div>
+      <strong class="status-pill"></strong>
+    </div>
+
+    <div class="shipment-meta">
+      <div>
+        <span>Last update</span>
+        <strong class="updated-at"></strong>
+      </div>
+      <div>
+        <span>Origin</span>
+        <strong class="origin"></strong>
+      </div>
+      <div>
+        <span>Destination</span>
+        <strong class="destination"></strong>
+      </div>
+    </div>
+
+    <p class="support-notice"></p>
+
+    <div class="shipment-progress" aria-hidden="true">
+      <span data-step="info_received"></span>
+      <span data-step="in_transit"></span>
+      <span data-step="out_for_delivery"></span>
+      <span data-step="delivered"></span>
+    </div>
+
+    <p class="provider-status"></p>
+
+    <ol class="timeline"></ol>
+  </article>
+</template>
+
+{{ 'tracking.js' | asset_url | script_tag }}
+
+{% schema %}
+{
+  "name": "Tracking page",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Track your order"
+    },
+    {
+      "type": "text",
+      "id": "proxy_path",
+      "label": "App proxy path",
+      "default": "/apps/track/api/track"
+    }
+  ]
+}
+{% endschema %}

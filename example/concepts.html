@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ParcelPilot UI Concepts</title>
+    <link rel="stylesheet" href="concepts.css" />
+  </head>
+  <body>
+    <header class="lab-header">
+      <a class="lab-brand" href="index.html" aria-label="返回基础版">
+        <span class="lab-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32">
+            <path d="M7 10.5 16 5l9 5.5v10.8l-9 5.7-9-5.7V10.5Z" />
+            <path d="m7.8 10.8 8.2 5 8.2-5M16 15.8v10.4" />
+          </svg>
+        </span>
+        <span>ParcelPilot UI Lab</span>
+      </a>
+      <nav class="concept-tabs" aria-label="UI 方案">
+        <button class="is-active" type="button" data-target="atlas">Atlas</button>
+        <button type="button" data-target="aero">Aero</button>
+        <button type="button" data-target="market">Market</button>
+        <button type="button" data-target="night">Night</button>
+      </nav>
+    </header>
+
+    <main class="concept-stage">
+      <section class="concept-page atlas is-active" id="atlas" aria-label="Atlas 方案">
+        <div class="phone-app-shell">
+          <header class="phone-top">
+            <div>
+              <p>Shipment Hub</p>
+              <h1>跨境包裹追踪</h1>
+            </div>
+            <button type="button" aria-label="扫描单号">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10" />
+              </svg>
+            </button>
+          </header>
+
+          <form class="atlas-search concept-form">
+            <textarea name="tracking" rows="4">RJ556381428CN&#10;LN328306902US</textarea>
+            <div class="atlas-actions">
+              <select name="carrier">
+                <option>自动识别</option>
+                <option>China Post</option>
+                <option>USPS</option>
+                <option>DHL</option>
+              </select>
+              <button type="submit">查询</button>
+            </div>
+          </form>
+
+          <div class="atlas-map">
+            <svg viewBox="0 0 360 150" aria-hidden="true">
+              <path class="grid-line" d="M22 96 C98 28 177 122 246 52 S332 76 342 36" />
+              <circle cx="22" cy="96" r="7" />
+              <circle cx="178" cy="91" r="7" />
+              <circle cx="342" cy="36" r="7" />
+              <path d="M76 40h52v39H76z" />
+              <path d="M83 48h38M83 58h30M83 68h24" />
+              <path d="M238 88h50v34h-50z" />
+              <path d="M246 96h34M246 106h22" />
+            </svg>
+          </div>
+
+          <section class="atlas-result demo-result">
+            <div class="result-head">
+              <div>
+                <span>China Post</span>
+                <h2 data-number>RJ556381428CN</h2>
+              </div>
+              <strong>运输中</strong>
+            </div>
+            <ol class="mini-timeline">
+              <li>
+                <time>04/29 16:20</time>
+                <span>到达目的地分拨中心</span>
+              </li>
+              <li>
+                <time>04/28 21:15</time>
+                <span>航班落地，等待清关</span>
+              </li>
+              <li>
+                <time>04/27 08:44</time>
+                <span>承运商已揽收</span>
+              </li>
+            </ol>
+          </section>
+        </div>
+      </section>
+
+      <section class="concept-page aero" id="aero" aria-label="Aero 方案">
+        <div class="aero-shell">
+          <aside class="aero-rail">
+            <div class="aero-logo">P</div>
+            <button class="is-current" type="button" aria-label="追踪">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+            </button>
+            <button type="button" aria-label="批量">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h10" />
+              </svg>
+            </button>
+            <button type="button" aria-label="设置">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+                <path d="M4 12h2M18 12h2M12 4v2M12 18v2" />
+              </svg>
+            </button>
+          </aside>
+
+          <div class="aero-main">
+            <header class="aero-header">
+              <div>
+                <p>Air Route Console</p>
+                <h1>全球航线追踪</h1>
+              </div>
+              <div class="aero-badges">
+                <span>API Ready</span>
+                <span>Webhook</span>
+              </div>
+            </header>
+
+            <form class="aero-search concept-form">
+              <input name="tracking" value="LN328306902US, 3861078222" />
+              <select name="carrier">
+                <option>自动识别</option>
+                <option>USPS</option>
+                <option>DHL Express</option>
+                <option>FedEx</option>
+              </select>
+              <button type="submit">Track</button>
+            </form>
+
+            <section class="aero-grid">
+              <div class="aero-map-card">
+                <div class="map-label origin">SZX</div>
+                <div class="map-label transfer">LAX</div>
+                <div class="map-label dest">ORD</div>
+                <svg viewBox="0 0 660 360" aria-hidden="true">
+                  <path d="M56 252 C196 84 375 304 604 90" />
+                  <path d="M56 252 C210 198 360 210 604 90" />
+                  <circle cx="56" cy="252" r="9" />
+                  <circle cx="332" cy="191" r="9" />
+                  <circle cx="604" cy="90" r="9" />
+                  <path class="plane" d="m367 151 61 20-55 15-14 34-17-9 10-31-32-12Z" />
+                </svg>
+              </div>
+
+              <aside class="aero-result demo-result">
+                <div class="result-head">
+                  <div>
+                    <span>USPS</span>
+                    <h2 data-number>LN328306902US</h2>
+                  </div>
+                  <strong>清关中</strong>
+                </div>
+                <dl class="aero-stats">
+                  <div><dt>ETA</dt><dd>05/02</dd></div>
+                  <div><dt>Transit</dt><dd>4 days</dd></div>
+                  <div><dt>Sync</dt><dd>8 min</dd></div>
+                </dl>
+                <ol class="mini-timeline">
+                  <li><time>04/29 15:06</time><span>Arrived at hub</span></li>
+                  <li><time>04/29 03:18</time><span>Customs clearance started</span></li>
+                  <li><time>04/28 12:40</time><span>Flight departed</span></li>
+                </ol>
+              </aside>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="concept-page market" id="market" aria-label="Market 方案">
+        <div class="market-shell">
+          <header class="market-top">
+            <a href="#" class="market-brand">
+              <span>PP</span>
+              <strong>ParcelPilot</strong>
+            </a>
+            <nav>
+              <a href="#">Orders</a>
+              <a href="#">Claims</a>
+              <a href="#">Support</a>
+            </nav>
+          </header>
+
+          <section class="market-hero">
+            <div class="market-copy">
+              <p>Customer Tracking Desk</p>
+              <h1>订单包裹状态</h1>
+            </div>
+            <form class="market-card concept-form">
+              <label>
+                <span>Tracking No.</span>
+                <input name="tracking" value="YT2423821266000001" />
+              </label>
+              <div class="market-row">
+                <label>
+                  <span>Carrier</span>
+                  <select name="carrier">
+                    <option>YunExpress</option>
+                    <option>4PX</option>
+                    <option>UPS</option>
+                    <option>自动识别</option>
+                  </select>
+                </label>
+                <button type="submit">查询</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="market-content">
+            <article class="market-status demo-result">
+              <div class="parcel-visual" aria-hidden="true">
+                <svg viewBox="0 0 210 140">
+                  <path d="M40 45 105 14l65 31v57l-65 33-65-33V45Z" />
+                  <path d="m40 45 65 33 65-33M105 78v57" />
+                  <path d="M76 28 141 61" />
+                </svg>
+              </div>
+              <div class="result-head">
+                <div>
+                  <span>YunExpress</span>
+                  <h2 data-number>YT2423821266000001</h2>
+                </div>
+                <strong>派送中</strong>
+              </div>
+              <div class="market-progress"><span></span></div>
+              <ol class="mini-timeline">
+                <li><time>04/29 14:12</time><span>包裹已到达末端站点</span></li>
+                <li><time>04/28 19:32</time><span>目的国清关完成</span></li>
+                <li><time>04/27 22:03</time><span>国际运输中</span></li>
+              </ol>
+            </article>
+
+            <aside class="market-side">
+              <div><span>异常提醒</span><strong>0</strong></div>
+              <div><span>今日同步</span><strong>128</strong></div>
+              <div><span>平均送达</span><strong>6.2d</strong></div>
+            </aside>
+          </section>
+        </div>
+      </section>
+
+      <section class="concept-page night" id="night" aria-label="Night 方案">
+        <div class="night-shell">
+          <header class="night-top">
+            <div>
+              <p>Control Room</p>
+              <h1>物流监控中心</h1>
+            </div>
+            <div class="night-clock">04/29 16:45 UTC+8</div>
+          </header>
+
+          <form class="night-search concept-form">
+            <textarea name="tracking" rows="3">SF145702998CN&#10;DHL003920145770</textarea>
+            <select name="carrier">
+              <option>自动识别</option>
+              <option>SF Express</option>
+              <option>DHL Express</option>
+              <option>FedEx</option>
+            </select>
+            <button type="submit">Run</button>
+          </form>
+
+          <section class="night-grid">
+            <div class="night-radar" aria-hidden="true">
+              <svg viewBox="0 0 420 420">
+                <circle cx="210" cy="210" r="164" />
+                <circle cx="210" cy="210" r="108" />
+                <circle cx="210" cy="210" r="54" />
+                <path d="M210 46v328M46 210h328" />
+                <path class="sweep" d="M210 210 328 98 A164 164 0 0 1 374 210Z" />
+                <circle class="blip one" cx="276" cy="156" r="7" />
+                <circle class="blip two" cx="146" cy="246" r="7" />
+                <circle class="blip three" cx="248" cy="292" r="7" />
+              </svg>
+            </div>
+
+            <article class="night-result demo-result">
+              <div class="result-head">
+                <div>
+                  <span>DHL Express</span>
+                  <h2 data-number>DHL003920145770</h2>
+                </div>
+                <strong>Exception</strong>
+              </div>
+              <dl class="night-metrics">
+                <div><dt>Risk</dt><dd>Medium</dd></div>
+                <div><dt>Node</dt><dd>LAX-03</dd></div>
+                <div><dt>SLA</dt><dd>18h</dd></div>
+              </dl>
+              <ol class="mini-timeline">
+                <li><time>16:29</time><span>地址校验需要确认</span></li>
+                <li><time>10:05</time><span>到达目的地处理中心</span></li>
+                <li><time>04/28</time><span>离开发件地口岸</span></li>
+              </ol>
+            </article>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="concepts.js" defer></script>
+  </body>
+</html>

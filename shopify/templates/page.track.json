@@ -1,0 +1,12 @@
+{
+  "sections": {
+    "main": {
+      "type": "tracking-page",
+      "settings": {
+        "heading": "Track your order",
+        "proxy_path": "/apps/track/api/track"
+      }
+    }
+  },
+  "order": ["main"]
+}

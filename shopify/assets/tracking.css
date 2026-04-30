@@ -1,0 +1,350 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f8;
+  --surface: #ffffff;
+  --surface-soft: #f3f6f8;
+  --line: #d9e0e6;
+  --text: #1f2a33;
+  --muted: #687682;
+  --accent: #1769e0;
+  --success: #1b9c7a;
+  --warn: #c7861b;
+  --danger: #c9584d;
+  --radius: 8px;
+  --shadow: 0 20px 50px rgba(16, 24, 32, 0.08);
+  font-family: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.tracking-page {
+  padding: 40px 20px 64px;
+  background: linear-gradient(180deg, #eef5ff, var(--bg) 260px);
+}
+
+.tracking-shell {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+}
+
+.tracking-header h1 {
+  margin: 0 0 20px;
+  color: var(--text);
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 1;
+}
+
+.tracking-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.tracking-query,
+.tracking-result,
+.shipment-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.tracking-query,
+.tracking-result {
+  padding: 20px;
+}
+
+.tracking-query {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.tracking-field {
+  display: grid;
+  gap: 8px;
+}
+
+.tracking-field span,
+.shipment-meta span,
+.carrier-name {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tracking-field textarea,
+.tracking-field select {
+  width: 100%;
+  color: var(--text);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  outline: 0;
+}
+
+.tracking-field textarea {
+  min-height: 140px;
+  padding: 14px;
+  resize: vertical;
+}
+
+.tracking-field select {
+  min-height: 48px;
+  padding: 0 12px;
+}
+
+.tracking-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 10px;
+}
+
+.tracking-button {
+  align-self: end;
+  min-height: 48px;
+  color: #fff;
+  background: var(--accent);
+  border-radius: var(--radius);
+  font-weight: 900;
+}
+
+.tracking-message {
+  min-height: 20px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tracking-message.is-error {
+  color: var(--danger);
+}
+
+.tracking-empty {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+.tracking-result-list {
+  display: grid;
+  gap: 14px;
+}
+
+.shipment-card {
+  padding: 20px;
+}
+
+.shipment-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tracking-number {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 22px;
+}
+
+.status-pill {
+  min-height: 30px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.status-pill.is-info_received,
+.status-pill.is-in_transit {
+  color: #0d4a3b;
+  background: #d9f3eb;
+}
+
+.status-pill.is-out_for_delivery {
+  color: #5f4709;
+  background: #fff0ce;
+}
+
+.status-pill.is-delivered {
+  color: #0f4d32;
+  background: #daf5e3;
+}
+
+.status-pill.is-exception,
+.status-pill.is-failed_attempt {
+  color: #7b2f28;
+  background: #fde3e0;
+}
+
+.status-pill.is-not_found,
+.status-pill.is-expired,
+.status-pill.is-unknown {
+  color: #5b6570;
+  background: #edf1f4;
+}
+
+.shipment-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.shipment-meta div {
+  min-width: 0;
+  padding: 13px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.shipment-meta strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.support-notice {
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  color: var(--text);
+  background: #f6f8fa;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  line-height: 1.5;
+}
+
+.shipment-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.shipment-progress span {
+  height: 8px;
+  background: #e6ebef;
+  border-radius: 999px;
+}
+
+.shipment-progress span.is-active {
+  background: var(--accent);
+}
+
+.shipment-card[data-status="delivered"] .shipment-progress span.is-active {
+  background: var(--success);
+}
+
+.shipment-card[data-status="exception"] .shipment-progress span.is-active,
+.shipment-card[data-status="failed_attempt"] .shipment-progress span.is-active {
+  background: var(--danger);
+}
+
+.provider-status {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.timeline {
+  display: grid;
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(86px, 104px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0 14px 20px;
+}
+
+.timeline li::before {
+  content: "";
+  position: absolute;
+  top: 19px;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.timeline li::after {
+  content: "";
+  position: absolute;
+  top: 33px;
+  bottom: -2px;
+  left: 4px;
+  width: 1px;
+  background: var(--line);
+}
+
+.timeline li:last-child::after {
+  display: none;
+}
+
+.timeline li.empty-event::before {
+  background: var(--muted);
+}
+
+.timeline time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.timeline .event-text {
+  min-width: 0;
+}
+
+.timeline .event-title {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.timeline .event-location {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 840px) {
+  .tracking-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .tracking-page {
+    padding: 24px 14px 48px;
+  }
+
+  .tracking-actions,
+  .shipment-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shipment-head {
+    flex-direction: column;
+  }
+
+  .timeline li {
+    grid-template-columns: minmax(0, 84px) minmax(0, 1fr);
+    gap: 12px;
+  }
+}

@@ -1,0 +1,329 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .config import settings
+
+NORMALIZED_STATUS_VALUES = (
+    "info_received",
+    "in_transit",
+    "out_for_delivery",
+    "delivered",
+    "exception",
+    "failed_attempt",
+    "not_found",
+    "expired",
+    "unknown",
+)
+
+LAST_ERROR_CODE_VALUES = (
+    "empty_tracking_number",
+    "invalid_tracking_number",
+    "invalid_shopify_signature",
+    "expired_shopify_signature",
+    "shop_not_allowed",
+    "not_store_order",
+    "rate_limited",
+    "tracking_refresh_limited",
+    "upstream_register_failed",
+    "upstream_query_failed",
+    "query_error",
+)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_connection() -> sqlite3.Connection:
+    db_path = Path(settings.database_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    conn = get_connection()
+    try:
+        conn.executescript(
+            f"""
+            CREATE TABLE IF NOT EXISTS tracking_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tracking_number TEXT NOT NULL,
+                carrier_code TEXT NOT NULL DEFAULT '',
+                carrier_name TEXT,
+                shop_domain TEXT,
+                is_registered INTEGER NOT NULL DEFAULT 0,
+                normalized_status TEXT NOT NULL DEFAULT 'unknown'
+                    CHECK (normalized_status IN {NORMALIZED_STATUS_VALUES}),
+                status_text TEXT,
+                provider_status TEXT,
+                provider_status_description TEXT,
+                origin_country TEXT,
+                destination_country TEXT,
+                last_event_time TEXT,
+                last_fetched_at TEXT,
+                cache_expires_at TEXT,
+                fetch_count INTEGER NOT NULL DEFAULT 0,
+                events_json TEXT NOT NULL DEFAULT '[]',
+                raw_response TEXT,
+                last_error_code TEXT,
+                last_error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (tracking_number, carrier_code)
+            );
+
+            CREATE TABLE IF NOT EXISTS rate_limit_hits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bucket_key TEXT NOT NULL,
+                bucket_type TEXT NOT NULL,
+                window_start INTEGER NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (bucket_key, bucket_type, window_start)
+            );
+
+            CREATE TABLE IF NOT EXISTS order_tracking_numbers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                shop_domain TEXT NOT NULL DEFAULT '',
+                order_name TEXT,
+                tracking_number TEXT NOT NULL,
+                carrier_code TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'manual',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (shop_domain, tracking_number, carrier_code)
+            );
+            """
+        )
+        _ensure_columns(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(tracking_records)").fetchall()
+    }
+    additions = {
+        "provider_status": "ALTER TABLE tracking_records ADD COLUMN provider_status TEXT",
+        "provider_status_description": (
+            "ALTER TABLE tracking_records ADD COLUMN provider_status_description TEXT"
+        ),
+    }
+    for column, statement in additions.items():
+        if column not in existing:
+            conn.execute(statement)
+
+
+def fetch_tracking_record(tracking_number: str, carrier_code: str | None) -> sqlite3.Row | None:
+    carrier_key = carrier_code or ""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT *
+            FROM tracking_records
+            WHERE tracking_number = ? AND carrier_code = ?
+            """,
+            (tracking_number, carrier_key),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def upsert_tracking_record(payload: dict[str, Any]) -> None:
+    conn = get_connection()
+    now = _now_iso()
+    carrier_key = payload.get("carrier_code") or ""
+    try:
+        existing = conn.execute(
+            """
+            SELECT id, fetch_count, created_at
+            FROM tracking_records
+            WHERE tracking_number = ? AND carrier_code = ?
+            """,
+            (payload["tracking_number"], carrier_key),
+        ).fetchone()
+        created_at = existing["created_at"] if existing else now
+        fetch_count = int(existing["fetch_count"]) + 1 if existing else 1
+        serialized_events = json.dumps(payload.get("events", []), ensure_ascii=True)
+        serialized_raw = json.dumps(payload.get("raw_response", {}), ensure_ascii=True)
+        conn.execute(
+            """
+            INSERT INTO tracking_records (
+                tracking_number,
+                carrier_code,
+                carrier_name,
+                shop_domain,
+                is_registered,
+                normalized_status,
+                status_text,
+                provider_status,
+                provider_status_description,
+                origin_country,
+                destination_country,
+                last_event_time,
+                last_fetched_at,
+                cache_expires_at,
+                fetch_count,
+                events_json,
+                raw_response,
+                last_error_code,
+                last_error_message,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tracking_number, carrier_code) DO UPDATE SET
+                carrier_name = excluded.carrier_name,
+                shop_domain = excluded.shop_domain,
+                is_registered = excluded.is_registered,
+                normalized_status = excluded.normalized_status,
+                status_text = excluded.status_text,
+                provider_status = excluded.provider_status,
+                provider_status_description = excluded.provider_status_description,
+                origin_country = excluded.origin_country,
+                destination_country = excluded.destination_country,
+                last_event_time = excluded.last_event_time,
+                last_fetched_at = excluded.last_fetched_at,
+                cache_expires_at = excluded.cache_expires_at,
+                fetch_count = excluded.fetch_count,
+                events_json = excluded.events_json,
+                raw_response = excluded.raw_response,
+                last_error_code = excluded.last_error_code,
+                last_error_message = excluded.last_error_message,
+                updated_at = excluded.updated_at
+            """,
+            (
+                payload["tracking_number"],
+                carrier_key,
+                payload.get("carrier_name"),
+                payload.get("shop_domain"),
+                1 if payload.get("is_registered") else 0,
+                payload["normalized_status"],
+                payload["status_text"],
+                payload.get("provider_status"),
+                payload.get("provider_status_description"),
+                payload.get("origin_country"),
+                payload.get("destination_country"),
+                payload.get("last_event_time"),
+                payload["last_fetched_at"],
+                payload["cache_expires_at"],
+                fetch_count,
+                serialized_events,
+                serialized_raw,
+                payload.get("last_error_code"),
+                payload.get("last_error_message"),
+                created_at,
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def is_store_order_tracking_number(
+    tracking_number: str,
+    carrier_code: str | None,
+    shop_domain: str | None,
+) -> bool:
+    carrier_key = carrier_code or ""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM order_tracking_numbers
+            WHERE tracking_number = ?
+              AND carrier_code IN (?, '')
+              AND (shop_domain = ? OR shop_domain IS NULL OR shop_domain = '')
+            LIMIT 1
+            """,
+            (tracking_number, carrier_key, shop_domain or ""),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def upsert_order_tracking_number(
+    tracking_number: str,
+    carrier_code: str | None = None,
+    shop_domain: str | None = None,
+    order_name: str | None = None,
+    source: str = "manual",
+) -> None:
+    carrier_key = carrier_code or ""
+    shop_key = shop_domain or ""
+    conn = get_connection()
+    now = _now_iso()
+    try:
+        conn.execute(
+            """
+            INSERT INTO order_tracking_numbers (
+                shop_domain,
+                order_name,
+                tracking_number,
+                carrier_code,
+                source,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(shop_domain, tracking_number, carrier_code) DO UPDATE SET
+                order_name = excluded.order_name,
+                source = excluded.source,
+                updated_at = excluded.updated_at
+            """,
+            (shop_key, order_name, tracking_number, carrier_key, source, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def consume_rate_limit(bucket_type: str, bucket_key: str, window_start: int) -> int:
+    conn = get_connection()
+    now = _now_iso()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, count
+            FROM rate_limit_hits
+            WHERE bucket_type = ? AND bucket_key = ? AND window_start = ?
+            """,
+            (bucket_type, bucket_key, window_start),
+        ).fetchone()
+        if row:
+            new_count = int(row["count"]) + 1
+            conn.execute(
+                """
+                UPDATE rate_limit_hits
+                SET count = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_count, now, row["id"]),
+            )
+        else:
+            new_count = 1
+            conn.execute(
+                """
+                INSERT INTO rate_limit_hits (
+                    bucket_key, bucket_type, window_start, count, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (bucket_key, bucket_type, window_start, new_count, now, now),
+            )
+        conn.commit()
+        return new_count
+    finally:
+        conn.close()
