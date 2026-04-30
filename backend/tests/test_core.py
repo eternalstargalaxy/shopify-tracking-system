@@ -5,6 +5,7 @@ import hmac
 import unittest
 
 from backend.app.normalization import normalize_status, status_label
+from backend.app.seventeen_track import parse_track_info
 from backend.app.services import parse_tracking_numbers
 
 
@@ -22,6 +23,37 @@ class CoreTests(unittest.TestCase):
         message = "logged_in_customer_id=shop=demo.myshopify.comtimestamp=1700000000"
         signature = hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
         self.assertEqual(len(signature), 64)
+
+    def test_parse_track_info_casts_numeric_carrier(self) -> None:
+        parsed = parse_track_info(
+            {
+                "data": {
+                    "accepted": [
+                        {
+                            "number": "RJ556381428CN",
+                            "carrier": 3011,
+                            "track": {
+                                "z0": 10,
+                                "z1": "In transit",
+                                "tracking": [
+                                    {
+                                        "eventTime": 1777539008,
+                                        "location": 100,
+                                        "description": "Accepted",
+                                        "status": 10,
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+            "RJ556381428CN",
+        )
+        self.assertEqual(parsed["carrier_code"], "3011")
+        self.assertEqual(parsed["carrier_name"], "3011")
+        self.assertEqual(parsed["provider_status"], "10")
+        self.assertEqual(parsed["events"][0]["location"], "100")
 
 
 if __name__ == "__main__":

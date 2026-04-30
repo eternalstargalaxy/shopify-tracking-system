@@ -11,6 +11,18 @@ from .config import settings
 from .normalization import normalize_status
 
 
+def _optional_text(value) -> str | None:
+    if value is None or value == "":
+        return None
+    return str(value)
+
+
+def _text(value) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
 class SeventeenTrackClient:
     def __init__(self) -> None:
         self.base_url = settings.seventeen_track_base_url.rstrip("/")
@@ -113,21 +125,22 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
         accepted = [accepted]
     item = accepted[0] if accepted else {}
     track = item.get("track") or item.get("data") or item
-    main_status = track.get("z0") or track.get("main_status")
-    status_text = track.get("z1") or track.get("latest_event") or "No tracking updates"
+    main_status = _optional_text(track.get("z0") or track.get("main_status"))
+    status_text = _text(track.get("z1") or track.get("latest_event") or "No tracking updates")
     provider_status_description = (
         track.get("provider_status_description")
         or track.get("latest_event")
         or status_text
     )
+    provider_status_description = _text(provider_status_description)
     normalized_status = normalize_status(main_status, None, status_text)
 
-    origin_country = (
+    origin_country = _optional_text(
         track.get("origin_info", {}).get("item_pre_advice")
         or track.get("origin_country")
         or None
     )
-    destination_country = (
+    destination_country = _optional_text(
         track.get("destination_info", {}).get("item_dest_country")
         or track.get("destination_country")
         or None
@@ -136,15 +149,15 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
     raw_events = track.get("tracking") or track.get("events") or []
     events = []
     for event in raw_events:
-        provider_status = event.get("status") or main_status or ""
-        event_description = event.get("description") or event.get("status") or ""
+        provider_status = _text(event.get("status") or main_status or "")
+        event_description = _text(event.get("description") or event.get("status") or "")
         event_normalized_status = normalize_status(provider_status, None, event_description)
-        event_time = event.get("eventTime") or event.get("time") or ""
+        event_time = _text(event.get("eventTime") or event.get("time") or "")
         events.append(
             {
                 "time": event_time,
                 "eventTime": event_time,
-                "location": event.get("location") or event.get("address") or "",
+                "location": _text(event.get("location") or event.get("address") or ""),
                 "description": event_description,
                 "raw_status": provider_status,
                 "providerStatus": provider_status,
@@ -156,8 +169,8 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
     last_event_time = events[0]["time"] if events else None
     return {
         "tracking_number": tracking_number,
-        "carrier_code": str(item.get("carrier") or item.get("carrier_code") or "") or None,
-        "carrier_name": item.get("carrier_name") or item.get("carrier") or None,
+        "carrier_code": _optional_text(item.get("carrier") or item.get("carrier_code")),
+        "carrier_name": _optional_text(item.get("carrier_name") or item.get("carrier")),
         "normalized_status": normalized_status,
         "status_text": status_text,
         "provider_status": main_status,
