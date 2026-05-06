@@ -45,6 +45,7 @@ class Settings:
     cache_ttl_exception_minutes: int = int(os.getenv("CACHE_TTL_EXCEPTION_MINUTES", "60"))
     hmac_max_age_seconds: int = int(os.getenv("HMAC_MAX_AGE_SECONDS", "300"))
     mock_when_api_key_missing: bool = os.getenv("MOCK_WHEN_API_KEY_MISSING", "true").lower() == "true"
+    internal_dashboard_token: str = os.getenv("INTERNAL_DASHBOARD_TOKEN", "")
 
 
 settings = Settings()

@@ -291,6 +291,23 @@ def upsert_order_tracking_number(
         conn.close()
 
 
+def list_recent_tracking_records(limit: int = 20) -> list[sqlite3.Row]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM tracking_records
+            ORDER BY COALESCE(last_fetched_at, updated_at, created_at) DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return list(rows)
+    finally:
+        conn.close()
+
+
 def consume_rate_limit(bucket_type: str, bucket_key: str, window_start: int) -> int:
     conn = get_connection()
     now = _now_iso()

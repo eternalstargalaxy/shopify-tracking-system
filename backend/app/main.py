@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from .config import settings
+from .config import ROOT_DIR, settings
+from .internal_auth import verify_internal_token
 from .db import init_db
 from .rate_limit import enforce_ip_limits
-from .schemas import QueryError, TrackResponse
-from .services import parse_tracking_numbers, process_tracking_number
+from .schemas import InternalTrackRequest, RecentShipmentsResponse, TrackResponse
+from .services import get_recent_shipments, parse_tracking_numbers, query_tracking_numbers
 from .seventeen_track import SeventeenTrackClient
 from .shopify_proxy import verify_proxy_request
 
@@ -21,6 +25,8 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 client = SeventeenTrackClient()
+STATIC_DIR = ROOT_DIR / "backend" / "app" / "static"
+app.mount("/internal/static", StaticFiles(directory=STATIC_DIR / "internal"), name="internal_static")
 
 
 @app.get("/health")
@@ -42,23 +48,12 @@ def track(
     if not tracking_numbers:
         raise HTTPException(status_code=400, detail="No valid tracking numbers were provided.")
 
-    shipments = []
-    errors: list[QueryError] = []
-    for tracking_number in tracking_numbers:
-        try:
-            shipment, error = process_tracking_number(client, tracking_number, carrier, shop_domain)
-            if shipment:
-                shipments.append(shipment)
-            if error:
-                errors.append(error)
-        except HTTPException as exc:
-            errors.append(
-                QueryError(
-                    trackingNumber=tracking_number,
-                    code="query_error",
-                    message=str(exc.detail),
-                )
-            )
+    shipments, errors = query_tracking_numbers(
+        client,
+        tracking_numbers,
+        carrier,
+        shop_domain,
+    )
 
     return TrackResponse(
         success=not errors,
@@ -69,3 +64,44 @@ def track(
         shipments=shipments,
         errors=errors,
     )
+
+
+@app.get("/internal")
+@app.get("/internal/")
+def internal_console() -> FileResponse:
+    return FileResponse(Path(STATIC_DIR / "internal" / "index.html"))
+
+
+@app.post("/internal/api/track", response_model=TrackResponse)
+def internal_track(request: Request, payload: InternalTrackRequest) -> TrackResponse:
+    verify_internal_token(request)
+    tracking_numbers = parse_tracking_numbers(payload.nums)
+    if not tracking_numbers:
+        raise HTTPException(status_code=400, detail="No valid tracking numbers were provided.")
+
+    shipments, errors = query_tracking_numbers(
+        client,
+        tracking_numbers,
+        payload.carrier,
+        None,
+        enforce_order_match=False,
+    )
+    return TrackResponse(
+        success=not errors,
+        ok=not errors,
+        queryCount=len(tracking_numbers),
+        shopDomain=None,
+        generatedAt=datetime.now(timezone.utc),
+        shipments=shipments,
+        errors=errors,
+    )
+
+
+@app.get("/internal/api/recent", response_model=RecentShipmentsResponse)
+def internal_recent(
+    request: Request,
+    limit: int = Query(default=12, ge=1, le=100),
+) -> RecentShipmentsResponse:
+    verify_internal_token(request)
+    shipments = get_recent_shipments(limit)
+    return RecentShipmentsResponse(count=len(shipments), shipments=shipments)

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>物流内部查询台</title>
+    <link rel="stylesheet" href="/internal/static/internal.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Internal Console</p>
+          <h1>物流查询台</h1>
+          <p class="lede">给客服和运营一个统一入口，支持批量查、快速查和历史回看。</p>
+        </div>
+
+        <div class="panel">
+          <label class="label" for="token">访问令牌</label>
+          <input id="token" class="input" type="password" placeholder="输入 INTERNAL_DASHBOARD_TOKEN">
+          <p class="hint">令牌仅保存在当前浏览器，用于调用内部接口。</p>
+        </div>
+
+        <div class="panel">
+          <div class="stats">
+            <div>
+              <span class="stat-label">本次查询</span>
+              <strong id="query-count">0</strong>
+            </div>
+            <div>
+              <span class="stat-label">命中缓存</span>
+              <strong id="cache-count">0</strong>
+            </div>
+            <div>
+              <span class="stat-label">异常 / 失败</span>
+              <strong id="error-count">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>最近查询</h2>
+            <button id="refresh-recent" class="ghost" type="button">刷新</button>
+          </div>
+          <div id="recent-list" class="recent-list"></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="composer">
+          <div class="panel-header">
+            <h2>批量查询</h2>
+            <div class="actions">
+              <button id="export-csv" class="ghost" type="button">导出 CSV</button>
+              <button id="run-query" class="primary" type="button">开始查询</button>
+            </div>
+          </div>
+
+          <div class="controls">
+            <div>
+              <label class="label" for="carrier">承运商代码</label>
+              <input id="carrier" class="input" type="text" placeholder="可选，如 3011">
+            </div>
+          </div>
+
+          <label class="label" for="nums">物流单号</label>
+          <textarea id="nums" class="textarea" placeholder="每行一个，或直接粘贴整段文本"></textarea>
+          <p class="hint">支持一行一个、空格分隔或整段文本自动提取。当前单次最多 40 个。</p>
+          <p id="error-message" class="error" hidden></p>
+        </section>
+
+        <section class="results">
+          <div class="panel-header">
+            <h2>查询结果</h2>
+          </div>
+          <div id="results-table" class="empty-state">输入物流单号后，这里会显示批量查询结果。</div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/internal/static/internal.js" defer></script>
+  </body>
+</html>

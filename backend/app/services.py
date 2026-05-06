@@ -5,7 +5,12 @@ import re
 from datetime import datetime, timezone
 
 from .config import settings
-from .db import fetch_tracking_record, is_store_order_tracking_number, upsert_tracking_record
+from .db import (
+    fetch_tracking_record,
+    is_store_order_tracking_number,
+    list_recent_tracking_records,
+    upsert_tracking_record,
+)
 from .normalization import compute_cache_expiry, status_label, support_notice
 from .rate_limit import enforce_tracking_refresh_limit
 from .schemas import QueryError, TrackingShipment
@@ -53,14 +58,61 @@ def build_cached_shipment(record) -> TrackingShipment:
     )
 
 
+def query_tracking_numbers(
+    client: SeventeenTrackClient,
+    tracking_numbers: list[str],
+    carrier_code: str | None,
+    shop_domain: str | None,
+    *,
+    enforce_order_match: bool | None = None,
+) -> tuple[list[TrackingShipment], list[QueryError]]:
+    shipments: list[TrackingShipment] = []
+    errors: list[QueryError] = []
+    for tracking_number in tracking_numbers:
+        try:
+            shipment, error = process_tracking_number(
+                client,
+                tracking_number,
+                carrier_code,
+                shop_domain,
+                enforce_order_match=enforce_order_match,
+            )
+            if shipment:
+                shipments.append(shipment)
+            if error:
+                errors.append(error)
+        except Exception as exc:
+            message = str(getattr(exc, "detail", exc)) or "Unknown query error."
+            errors.append(
+                QueryError(
+                    trackingNumber=tracking_number,
+                    code="query_error",
+                    message=message,
+                )
+            )
+    return shipments, errors
+
+
+def get_recent_shipments(limit: int = 20) -> list[TrackingShipment]:
+    rows = list_recent_tracking_records(limit)
+    return [build_cached_shipment(row) for row in rows]
+
+
 def process_tracking_number(
     client: SeventeenTrackClient,
     tracking_number: str,
     carrier_code: str | None,
     shop_domain: str | None,
+    *,
+    enforce_order_match: bool | None = None,
 ) -> tuple[TrackingShipment | None, QueryError | None]:
     record = fetch_tracking_record(tracking_number, carrier_code)
-    if settings.require_order_tracking_match and not is_store_order_tracking_number(
+    should_enforce_order_match = (
+        settings.require_order_tracking_match
+        if enforce_order_match is None
+        else enforce_order_match
+    )
+    if should_enforce_order_match and not is_store_order_tracking_number(
         tracking_number,
         carrier_code,
         shop_domain,

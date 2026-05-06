@@ -82,3 +82,13 @@ class TrackResponse(BaseModel):
     errors: list[QueryError]
 
     model_config = {"populate_by_name": True}
+
+
+class InternalTrackRequest(BaseModel):
+    nums: str
+    carrier: str | None = None
+
+
+class RecentShipmentsResponse(BaseModel):
+    count: int
+    shipments: list[TrackingShipment]
