@@ -2,30 +2,147 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import tempfile
+import shutil
 import unittest
+from contextlib import contextmanager
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from backend.app import config as config_module
 from backend.app import main as main_module
-from backend.app.db import init_db, upsert_tracking_record
+from backend.app.db import fetch_tracking_record, init_db, upsert_tracking_record
 from backend.app.normalization import normalize_status, status_label
 from backend.app.seventeen_track import parse_track_info
-from backend.app.services import parse_tracking_numbers
+from backend.app.services import parse_tracking_numbers, process_tracking_number
+
+
+@contextmanager
+def workspace_temp_dir():
+    root = Path.cwd() / ".tmp_tests"
+    root.mkdir(exist_ok=True)
+    temp_dir = root / f"case-{uuid4().hex}"
+    temp_dir.mkdir()
+    try:
+        yield temp_dir
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 class CoreTests(unittest.TestCase):
+    def test_fetch_tracking_record_without_carrier_uses_detected_carrier(self) -> None:
+        original_db_path = config_module.settings.database_path
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                upsert_tracking_record(
+                    {
+                        "tracking_number": "YT2610601001467359",
+                        "carrier_code": "190008",
+                        "carrier_name": "YunExpress",
+                        "shop_domain": "",
+                        "is_registered": True,
+                        "normalized_status": "in_transit",
+                        "status_text": "In transit",
+                        "provider_status": "InTransit",
+                        "provider_status_description": "Package departed facility",
+                        "origin_country": "CN",
+                        "destination_country": "GB",
+                        "last_event_time": "2026-05-08T02:00:00+00:00",
+                        "last_fetched_at": "2026-05-08T02:10:00+00:00",
+                        "cache_expires_at": "2026-05-08T04:10:00+00:00",
+                        "events": [],
+                        "raw_response": {},
+                    }
+                )
+                record = fetch_tracking_record("YT2610601001467359", None)
+                self.assertIsNotNone(record)
+                self.assertEqual(record["carrier_code"], "190008")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+
+    def test_process_tracking_number_retries_with_detected_carrier(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str | None]] = []
+
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.calls.append(("register", carrier_code))
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.calls.append(("get", carrier_code))
+                if carrier_code is None:
+                    return {
+                        "data": {
+                            "accepted": [
+                                {
+                                    "number": tracking_number,
+                                    "carrier": "190008",
+                                    "track": {
+                                        "z0": "NotFound",
+                                        "z1": "No tracking updates",
+                                        "tracking": [],
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code,
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Departed origin facility",
+                                    "tracking": [
+                                        {
+                                            "eventTime": "2026-05-08T03:00:00+00:00",
+                                            "location": "Shenzhen, CN",
+                                            "description": "Departed origin facility",
+                                            "status": "InTransit",
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        original_db_path = config_module.settings.database_path
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                shipment, error = process_tracking_number(
+                    FakeClient(),
+                    "YT2610601001467359",
+                    None,
+                    None,
+                    enforce_order_match=False,
+                )
+                self.assertIsNone(error)
+                self.assertIsNotNone(shipment)
+                self.assertEqual(shipment.carrier_code, "190008")
+                self.assertEqual(shipment.normalized_status, "in_transit")
+                self.assertEqual(len(shipment.events), 1)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+
     def test_internal_api_requires_token(self) -> None:
         original_token = config_module.settings.internal_dashboard_token
         original_mock = config_module.settings.mock_when_api_key_missing
         original_db_path = config_module.settings.database_path
         original_client_key = main_module.client.api_key
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with workspace_temp_dir() as temp_dir:
             try:
                 object.__setattr__(config_module.settings, "internal_dashboard_token", "secret-token")
                 object.__setattr__(config_module.settings, "mock_when_api_key_missing", True)
-                object.__setattr__(config_module.settings, "database_path", f"{temp_dir}/test.sqlite3")
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
                 main_module.client.api_key = ""
                 init_db()
                 with TestClient(main_module.app) as client:
@@ -40,10 +157,10 @@ class CoreTests(unittest.TestCase):
     def test_internal_recent_returns_cached_shipments(self) -> None:
         original_token = config_module.settings.internal_dashboard_token
         original_db_path = config_module.settings.database_path
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with workspace_temp_dir() as temp_dir:
             try:
                 object.__setattr__(config_module.settings, "internal_dashboard_token", "secret-token")
-                object.__setattr__(config_module.settings, "database_path", f"{temp_dir}/test.sqlite3")
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
                 init_db()
                 upsert_tracking_record(
                     {

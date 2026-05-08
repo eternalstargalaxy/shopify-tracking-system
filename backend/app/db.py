@@ -126,16 +126,29 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
 
 
 def fetch_tracking_record(tracking_number: str, carrier_code: str | None) -> sqlite3.Row | None:
-    carrier_key = carrier_code or ""
     conn = get_connection()
     try:
+        if carrier_code is not None:
+            carrier_key = carrier_code or ""
+            return conn.execute(
+                """
+                SELECT *
+                FROM tracking_records
+                WHERE tracking_number = ? AND carrier_code = ?
+                """,
+                (tracking_number, carrier_key),
+            ).fetchone()
         return conn.execute(
             """
             SELECT *
             FROM tracking_records
-            WHERE tracking_number = ? AND carrier_code = ?
+            WHERE tracking_number = ?
+            ORDER BY
+                CASE WHEN carrier_code = '' THEN 1 ELSE 0 END,
+                COALESCE(last_fetched_at, updated_at, created_at) DESC
+            LIMIT 1
             """,
-            (tracking_number, carrier_key),
+            (tracking_number,),
         ).fetchone()
     finally:
         conn.close()

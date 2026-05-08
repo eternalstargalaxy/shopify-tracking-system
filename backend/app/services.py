@@ -98,6 +98,21 @@ def get_recent_shipments(limit: int = 20) -> list[TrackingShipment]:
     return [build_cached_shipment(row) for row in rows]
 
 
+def _result_score(parsed: dict) -> tuple[int, int, int]:
+    return (
+        len(parsed.get("events") or []),
+        1 if parsed.get("last_event_time") else 0,
+        0 if parsed.get("normalized_status") in {"not_found", "unknown"} else 1,
+    )
+
+
+def _should_retry_with_detected_carrier(parsed: dict, carrier_code: str | None) -> bool:
+    detected_carrier = parsed.get("carrier_code")
+    if not detected_carrier or detected_carrier == carrier_code:
+        return False
+    return parsed.get("normalized_status") in {"not_found", "unknown"} and not parsed.get("events")
+
+
 def process_tracking_number(
     client: SeventeenTrackClient,
     tracking_number: str,
@@ -107,6 +122,7 @@ def process_tracking_number(
     enforce_order_match: bool | None = None,
 ) -> tuple[TrackingShipment | None, QueryError | None]:
     record = fetch_tracking_record(tracking_number, carrier_code)
+    resolved_carrier_code = carrier_code or (record["carrier_code"] if record else None) or None
     should_enforce_order_match = (
         settings.require_order_tracking_match
         if enforce_order_match is None
@@ -126,14 +142,22 @@ def process_tracking_number(
     if record_is_fresh(record):
         return build_cached_shipment(record), None
 
-    enforce_tracking_refresh_limit(f"{tracking_number}:{carrier_code or 'auto'}")
+    enforce_tracking_refresh_limit(f"{tracking_number}:{resolved_carrier_code or 'auto'}")
 
     is_registered = bool(record["is_registered"]) if record else False
     if not is_registered:
-        client.register(tracking_number, carrier_code)
+        client.register(tracking_number, resolved_carrier_code)
 
-    raw_response = client.get_track_info(tracking_number, carrier_code)
+    raw_response = client.get_track_info(tracking_number, resolved_carrier_code)
     parsed = parse_track_info(raw_response, tracking_number)
+    if _should_retry_with_detected_carrier(parsed, resolved_carrier_code):
+        detected_carrier = parsed["carrier_code"]
+        client.register(tracking_number, detected_carrier)
+        retry_response = client.get_track_info(tracking_number, detected_carrier)
+        retry_parsed = parse_track_info(retry_response, tracking_number)
+        if _result_score(retry_parsed) > _result_score(parsed):
+            parsed = retry_parsed
+
     now = datetime.now(timezone.utc)
     cache_expires_at = compute_cache_expiry(parsed["normalized_status"], now)
 
