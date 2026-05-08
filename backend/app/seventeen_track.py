@@ -124,40 +124,94 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
     if isinstance(accepted, dict):
         accepted = [accepted]
     item = accepted[0] if accepted else {}
-    track = item.get("track") or item.get("data") or item
-    main_status = _optional_text(track.get("z0") or track.get("main_status"))
-    status_text = _text(track.get("z1") or track.get("latest_event") or "No tracking updates")
+    track = item.get("track_info") or item.get("track") or item.get("data") or item
+
+    latest_status = track.get("latest_status") or {}
+    latest_event = track.get("latest_event") or {}
+
+    main_status = _optional_text(
+        latest_status.get("status")
+        or track.get("z0")
+        or track.get("main_status")
+    )
+    status_text = _text(
+        latest_event.get("description")
+        or latest_status.get("sub_status_descr")
+        or track.get("z1")
+        or track.get("latest_event")
+        or "No tracking updates"
+    )
     provider_status_description = (
         track.get("provider_status_description")
-        or track.get("latest_event")
+        or latest_event.get("description")
+        or latest_status.get("sub_status_descr")
         or status_text
     )
     provider_status_description = _text(provider_status_description)
     normalized_status = normalize_status(main_status, None, status_text)
 
+    shipping_info = track.get("shipping_info") or {}
     origin_country = _optional_text(
-        track.get("origin_info", {}).get("item_pre_advice")
+        shipping_info.get("shipper_address", {}).get("country")
+        or track.get("origin_info", {}).get("item_pre_advice")
         or track.get("origin_country")
         or None
     )
     destination_country = _optional_text(
-        track.get("destination_info", {}).get("item_dest_country")
+        shipping_info.get("recipient_address", {}).get("country")
+        or track.get("destination_info", {}).get("item_dest_country")
         or track.get("destination_country")
         or None
     )
 
-    raw_events = track.get("tracking") or track.get("events") or []
+    tracking_data = track.get("tracking") or {}
+    provider_entries = tracking_data.get("providers") or [] if isinstance(tracking_data, dict) else []
+    if provider_entries:
+        primary_provider = provider_entries[0]
+        provider_meta = primary_provider.get("provider") or {}
+        raw_events = primary_provider.get("events") or []
+        carrier_name = (
+            provider_meta.get("name")
+            or provider_meta.get("alias")
+            or item.get("carrier_name")
+            or item.get("carrier")
+        )
+    else:
+        raw_events = tracking_data if isinstance(tracking_data, list) else (track.get("events") or [])
+        carrier_name = item.get("carrier_name") or item.get("carrier")
+
     events = []
     for event in raw_events:
-        provider_status = _text(event.get("status") or main_status or "")
-        event_description = _text(event.get("description") or event.get("status") or "")
+        provider_status = _text(
+            event.get("stage")
+            or event.get("status")
+            or main_status
+            or ""
+        )
+        event_description = _text(
+            event.get("description")
+            or event.get("status")
+            or event.get("stage")
+            or ""
+        )
         event_normalized_status = normalize_status(provider_status, None, event_description)
-        event_time = _text(event.get("eventTime") or event.get("time") or "")
+        event_time = _text(
+            event.get("time_utc")
+            or event.get("time_iso")
+            or event.get("eventTime")
+            or event.get("time")
+            or ""
+        )
         events.append(
             {
                 "time": event_time,
                 "eventTime": event_time,
-                "location": _text(event.get("location") or event.get("address") or ""),
+                "location": _text(
+                    event.get("location")
+                    or event.get("address", {}).get("city")
+                    or event.get("address")
+                    or ""
+                ),
                 "description": event_description,
                 "raw_status": provider_status,
                 "providerStatus": provider_status,
@@ -166,11 +220,15 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
             }
         )
 
-    last_event_time = events[0]["time"] if events else None
+    last_event_time = _optional_text(
+        latest_event.get("time_utc")
+        or latest_event.get("time_iso")
+        or (events[0]["time"] if events else None)
+    )
     return {
         "tracking_number": tracking_number,
         "carrier_code": _optional_text(item.get("carrier") or item.get("carrier_code")),
-        "carrier_name": _optional_text(item.get("carrier_name") or item.get("carrier")),
+        "carrier_name": _optional_text(carrier_name),
         "normalized_status": normalized_status,
         "status_text": status_text,
         "provider_status": main_status,

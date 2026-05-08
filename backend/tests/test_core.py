@@ -240,6 +240,77 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(parsed["provider_status"], "10")
         self.assertEqual(parsed["events"][0]["location"], "100")
 
+    def test_parse_track_info_supports_v2_track_info_payload(self) -> None:
+        parsed = parse_track_info(
+            {
+                "code": 0,
+                "data": {
+                    "accepted": [
+                        {
+                            "number": "YT2610601001467359",
+                            "carrier": 190008,
+                            "track_info": {
+                                "shipping_info": {
+                                    "shipper_address": {"country": "CN"},
+                                    "recipient_address": {"country": "US"},
+                                },
+                                "latest_status": {
+                                    "status": "Delivered",
+                                    "sub_status": "Delivered_Other",
+                                    "sub_status_descr": None,
+                                },
+                                "latest_event": {
+                                    "time_iso": "2026-04-22T13:27:08-04:00",
+                                    "time_utc": "2026-04-22T17:27:08Z",
+                                    "description": "Delivered, Door/Yard",
+                                    "location": "Palm Beach Gardens",
+                                    "stage": "Delivered",
+                                },
+                                "tracking": {
+                                    "providers": [
+                                        {
+                                            "provider": {
+                                                "key": 190008,
+                                                "name": "YunExpress",
+                                                "alias": "YunExpress 云途物流",
+                                            },
+                                            "events": [
+                                                {
+                                                    "time_iso": "2026-04-22T13:27:08-04:00",
+                                                    "time_utc": "2026-04-22T17:27:08Z",
+                                                    "description": "Delivered, Door/Yard",
+                                                    "location": "Palm Beach Gardens",
+                                                    "stage": "Delivered",
+                                                },
+                                                {
+                                                    "time_iso": "2026-04-22T08:50:08-04:00",
+                                                    "time_utc": "2026-04-22T12:50:08Z",
+                                                    "description": "Out for Delivery",
+                                                    "location": "Palm Beach Gardens",
+                                                    "stage": "OutForDelivery",
+                                                },
+                                            ],
+                                        }
+                                    ]
+                                },
+                            },
+                        }
+                    ]
+                },
+            },
+            "YT2610601001467359",
+        )
+        self.assertEqual(parsed["carrier_code"], "190008")
+        self.assertEqual(parsed["carrier_name"], "YunExpress")
+        self.assertEqual(parsed["normalized_status"], "delivered")
+        self.assertEqual(parsed["provider_status"], "Delivered")
+        self.assertEqual(parsed["origin_country"], "CN")
+        self.assertEqual(parsed["destination_country"], "US")
+        self.assertEqual(parsed["last_event_time"], "2026-04-22T17:27:08Z")
+        self.assertEqual(len(parsed["events"]), 2)
+        self.assertEqual(parsed["events"][0]["providerStatus"], "Delivered")
+        self.assertEqual(parsed["events"][1]["providerStatus"], "OutForDelivery")
+
 
 if __name__ == "__main__":
     unittest.main()
