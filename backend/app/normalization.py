@@ -13,7 +13,7 @@ STATUS_LABELS = {
     "failed_attempt": "Delivery attempt failed",
     "not_found": "No tracking updates",
     "expired": "Tracking expired",
-    "unknown": "Status unknown",
+    "unknown": "Unknown status",
 }
 
 MAIN_STATUS_MAP = {
@@ -61,15 +61,15 @@ def status_label(normalized_status: str) -> str:
 
 def support_notice(normalized_status: str) -> str:
     messages = {
-        "info_received": "The carrier has not scanned the parcel yet.",
-        "in_transit": "The shipment is moving through the carrier network.",
-        "out_for_delivery": "The parcel is in the final-mile delivery stage.",
-        "delivered": "Delivery has been completed.",
-        "exception": "A shipment exception needs attention.",
-        "failed_attempt": "A delivery attempt was made but did not complete.",
-        "not_found": "No tracking updates are available yet.",
-        "expired": "Tracking is no longer being actively updated.",
-        "unknown": "The shipment status could not be classified yet.",
+        "info_received": "The carrier has received the shipment details but has not scanned the parcel yet.",
+        "in_transit": "Your parcel is moving through the delivery network.",
+        "out_for_delivery": "Your parcel is out for delivery.",
+        "delivered": "This parcel has been delivered.",
+        "exception": "There has been a delivery exception and the parcel may need attention.",
+        "failed_attempt": "A delivery attempt was made but the parcel was not delivered.",
+        "not_found": "No tracking updates are available for this parcel yet.",
+        "expired": "Tracking updates for this parcel are no longer actively refreshed.",
+        "unknown": "The latest parcel status could not be classified yet.",
     }
     return messages[normalized_status]
 

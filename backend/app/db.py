@@ -250,21 +250,76 @@ def is_store_order_tracking_number(
     carrier_code: str | None,
     shop_domain: str | None,
 ) -> bool:
-    carrier_key = carrier_code or ""
     conn = get_connection()
     try:
-        row = conn.execute(
+        if carrier_code is None:
+            row = conn.execute(
+                """
+                SELECT id
+                FROM order_tracking_numbers
+                WHERE tracking_number = ?
+                  AND (shop_domain = ? OR shop_domain IS NULL OR shop_domain = '')
+                LIMIT 1
+                """,
+                (tracking_number, shop_domain or ""),
+            ).fetchone()
+        else:
+            carrier_key = carrier_code or ""
+            row = conn.execute(
+                """
+                SELECT id
+                FROM order_tracking_numbers
+                WHERE tracking_number = ?
+                  AND carrier_code IN (?, '')
+                  AND (shop_domain = ? OR shop_domain IS NULL OR shop_domain = '')
+                LIMIT 1
+                """,
+                (tracking_number, carrier_key, shop_domain or ""),
+            ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def fetch_order_tracking_match(
+    tracking_number: str,
+    carrier_code: str | None,
+    shop_domain: str | None,
+) -> sqlite3.Row | None:
+    conn = get_connection()
+    try:
+        if carrier_code is None:
+            return conn.execute(
+                """
+                SELECT *
+                FROM order_tracking_numbers
+                WHERE tracking_number = ?
+                  AND (shop_domain = ? OR shop_domain IS NULL OR shop_domain = '')
+                ORDER BY
+                  CASE WHEN shop_domain = ? THEN 0 ELSE 1 END,
+                  CASE WHEN carrier_code = '' THEN 1 ELSE 0 END,
+                  updated_at DESC
+                LIMIT 1
+                """,
+                (tracking_number, shop_domain or "", shop_domain or ""),
+            ).fetchone()
+
+        carrier_key = carrier_code or ""
+        return conn.execute(
             """
-            SELECT id
+            SELECT *
             FROM order_tracking_numbers
             WHERE tracking_number = ?
               AND carrier_code IN (?, '')
               AND (shop_domain = ? OR shop_domain IS NULL OR shop_domain = '')
+            ORDER BY
+              CASE WHEN carrier_code = ? THEN 0 ELSE 1 END,
+              CASE WHEN shop_domain = ? THEN 0 ELSE 1 END,
+              updated_at DESC
             LIMIT 1
             """,
-            (tracking_number, carrier_key, shop_domain or ""),
+            (tracking_number, carrier_key, shop_domain or "", carrier_key, shop_domain or ""),
         ).fetchone()
-        return row is not None
     finally:
         conn.close()
 

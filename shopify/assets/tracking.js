@@ -10,6 +10,8 @@
   const emptyState = document.querySelector("#emptyState");
   const template = document.querySelector("#shipmentTemplate");
   const trackButton = document.querySelector("#trackBtn");
+  const TRACK_COOLDOWN_SECONDS = 15;
+  const DELIVERY_SUPPORT_SPLIT = /(\.\s*For Delivery Issues.*$)/i;
 
   const STATUS_LABELS = {
     info_received: "Info received",
@@ -23,6 +25,31 @@
     unknown: "Unknown"
   };
   const PROGRESS_ORDER = ["info_received", "in_transit", "out_for_delivery", "delivered"];
+  const ORIGIN_LOCATION_KEYWORDS = [
+    "mainland china",
+    "china, cn",
+    "cn",
+    "shenzhen",
+    "guangzhou",
+    "dongguan",
+    "origin facility",
+    "origin international airport"
+  ];
+  const PRE_DISPATCH_KEYWORDS = [
+    "shipment information received",
+    "label created",
+    "information received"
+  ];
+  const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  let cooldownTimer = null;
+  let cooldownRemaining = 0;
 
   function setMessage(text, isError) {
     message.textContent = text || "";
@@ -34,73 +61,204 @@
     return [...new Set(matches.map((item) => item.toUpperCase()))].slice(0, 40);
   }
 
+  function setTrackButtonLabel() {
+    if (!trackButton) return;
+    if (trackButton.disabled && cooldownRemaining > 0) {
+      trackButton.textContent = `Track again in ${cooldownRemaining}s`;
+      return;
+    }
+    trackButton.textContent = "Track parcel";
+  }
+
+  function startCooldown() {
+    if (!trackButton) return;
+    if (cooldownTimer) {
+      window.clearInterval(cooldownTimer);
+      cooldownTimer = null;
+    }
+
+    cooldownRemaining = TRACK_COOLDOWN_SECONDS;
+    trackButton.disabled = true;
+    setTrackButtonLabel();
+
+    cooldownTimer = window.setInterval(() => {
+      cooldownRemaining -= 1;
+      if (cooldownRemaining <= 0) {
+        window.clearInterval(cooldownTimer);
+        cooldownTimer = null;
+        cooldownRemaining = 0;
+        trackButton.disabled = false;
+      }
+      setTrackButtonLabel();
+    }, 1000);
+  }
+
   function formatDate(value) {
     if (!value) return "-";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString();
+    return DATE_FORMATTER.format(date);
   }
 
-  function renderShipments(shipments) {
-    resultsList.innerHTML = "";
-    emptyState.hidden = shipments.length > 0;
+  function normalizeDisplayText(value) {
+    if (value == null) return "";
+    const text = typeof value === "string" ? value.trim() : String(value).trim();
+    if (!text || text === "[object Object]") return "";
+    if ((text.startsWith("{") && text.includes("country")) || text.includes("'country': None")) {
+      return "";
+    }
+    return text;
+  }
 
-    shipments.forEach((shipment) => {
-      const node = template.content.firstElementChild.cloneNode(true);
-      node.querySelector(".carrier-name").textContent = shipment.carrierName || "Auto";
-      node.querySelector(".tracking-number").textContent = shipment.trackingNumber;
+  function formatLocation(value) {
+    if (!value) return "";
+    if (typeof value === "object") {
+      const address = value.address || value;
+      const parts = [
+        address.city,
+        address.state,
+        address.country,
+        address.postal_code
+      ].filter(Boolean);
+      return parts.join(", ");
+    }
+    return normalizeDisplayText(value);
+  }
 
-      const statusPill = node.querySelector(".status-pill");
-      statusPill.textContent = shipment.statusText || STATUS_LABELS[shipment.normalizedStatus] || "Unknown";
-      statusPill.classList.add(`is-${shipment.normalizedStatus}`);
+  function isOriginLocationText(value) {
+    const text = normalizeDisplayText(value).toLowerCase();
+    if (!text) return false;
+    return ORIGIN_LOCATION_KEYWORDS.some((keyword) => text.includes(keyword));
+  }
 
-      node.querySelector(".updated-at").textContent = formatDate(shipment.updatedAt);
-      node.querySelector(".origin").textContent = shipment.originCountry || "-";
-      node.querySelector(".destination").textContent = shipment.destinationCountry || "-";
-      node.querySelector(".support-notice").textContent = shipment.supportNotice || "";
-      node.dataset.status = shipment.normalizedStatus || "unknown";
+  function isPreDispatchDescription(value) {
+    const text = normalizeDisplayText(value).toLowerCase();
+    if (!text) return false;
+    return PRE_DISPATCH_KEYWORDS.some((keyword) => text.includes(keyword));
+  }
 
-      const providerStatus = node.querySelector(".provider-status");
-      const providerText = [shipment.providerStatus, shipment.providerStatusDescription]
-        .filter(Boolean)
-        .join(" · ");
-      providerStatus.textContent = providerText;
-      providerStatus.hidden = !providerText;
+  function getDispatchEvent(events) {
+    const chronological = [...events].reverse();
+    return chronological.find((event) => !isPreDispatchDescription(event.description)) || chronological[0] || null;
+  }
 
-      const activeIndex = PROGRESS_ORDER.indexOf(shipment.normalizedStatus);
-      node.querySelectorAll(".shipment-progress span").forEach((step, index) => {
-        step.classList.toggle("is-active", index <= activeIndex && activeIndex >= 0);
-      });
+  function collapseOriginEvents(events) {
+    if (!events.length) return { events: [], hiddenOriginCount: 0, dispatchEvent: null };
 
-      const timeline = node.querySelector(".timeline");
-      const events = shipment.events || [];
-      if (!events.length) {
-        const item = document.createElement("li");
-        item.className = "empty-event";
-        item.innerHTML = `
-          <time>-</time>
-          <div class="event-text">
-            <div class="event-title">No tracking timeline is available yet.</div>
-            <div class="event-location"></div>
-          </div>
-        `;
-        timeline.appendChild(item);
+    const chronological = [...events].reverse();
+    let collapsed = [];
+    let hiddenOriginCount = 0;
+    let summaryInserted = false;
+
+    chronological.forEach((event, index) => {
+      const locationText = formatLocation(event.location);
+      const isOriginEvent = isOriginLocationText(locationText);
+      if (isOriginEvent) {
+        hiddenOriginCount += 1;
       }
-      events.forEach((event) => {
-        const item = document.createElement("li");
-        const eventTime = event.eventTime || event.time;
-        const eventStatus = event.providerStatus || event.raw_status || "";
-        item.innerHTML = `
-          <time>${escapeHtml(formatDate(eventTime))}</time>
-          <div class="event-text">
-            <div class="event-title">${escapeHtml(event.description || "")}</div>
-            <div class="event-location">${escapeHtml([event.location, eventStatus].filter(Boolean).join(" · "))}</div>
-          </div>
-        `;
-        timeline.appendChild(item);
-      });
 
-      resultsList.appendChild(node);
+      if (isOriginEvent) {
+        return;
+      }
+
+      if (!summaryInserted && hiddenOriginCount > 0) {
+        const dispatchSource = chronological
+          .slice(0, index)
+          .find((candidate) => !isPreDispatchDescription(candidate.description))
+          || chronological[index - 1]
+          || chronological[0];
+
+        collapsed.push({
+          time: dispatchSource && (dispatchSource.eventTime || dispatchSource.time),
+          eventTime: dispatchSource && (dispatchSource.eventTime || dispatchSource.time),
+          description: "Shipment dispatched from our warehouse",
+          location: "",
+          providerStatus: "",
+          raw_status: ""
+        });
+        summaryInserted = true;
+      }
+
+      collapsed.push({
+        ...event,
+        location: locationText
+      });
+    });
+
+    if (!summaryInserted && hiddenOriginCount > 0) {
+      const dispatchSource = chronological.find((candidate) => !isPreDispatchDescription(candidate.description)) || chronological[0];
+      collapsed.push({
+        time: dispatchSource && (dispatchSource.eventTime || dispatchSource.time),
+        eventTime: dispatchSource && (dispatchSource.eventTime || dispatchSource.time),
+        description: "Shipment dispatched from our warehouse",
+        location: "",
+        providerStatus: "",
+        raw_status: ""
+      });
+      summaryInserted = true;
+    }
+
+    const dispatchEvent = getDispatchEvent(chronological);
+    return {
+      events: collapsed.reverse(),
+      hiddenOriginCount,
+      dispatchEvent
+    };
+  }
+
+  function formatStatusText(value) {
+    if (!value) return "";
+    return STATUS_LABELS[value] || String(value)
+      .replaceAll("_", " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  function cleanEventDescription(value) {
+    const text = normalizeDisplayText(value);
+    if (!text) return "";
+    return text.replace(DELIVERY_SUPPORT_SPLIT, ".").replace(/\s+\.$/, ".").trim();
+  }
+
+  function extractSupportText(value) {
+    const text = normalizeDisplayText(value);
+    if (!text) return "";
+    const match = text.match(/For Delivery Issues.*$/i);
+    return match ? match[0].trim() : "";
+  }
+
+  function renderOrderSummary(node, orderSummary) {
+    const container = node.querySelector(".order-summary");
+    if (!container) return;
+    if (!orderSummary || (!orderSummary.orderName && !orderSummary.placedAt && !orderSummary.fulfillmentStatus && !(orderSummary.items || []).length)) {
+      container.hidden = true;
+      return;
+    }
+
+    const orderName = normalizeDisplayText(orderSummary.orderName) || "-";
+    const placedAt = orderSummary.placedAt ? formatDate(orderSummary.placedAt) : "-";
+    const fulfilment = normalizeDisplayText(orderSummary.fulfillmentStatus) || "-";
+    const items = Array.isArray(orderSummary.items) ? orderSummary.items : [];
+
+    container.hidden = false;
+    node.querySelector(".order-name").textContent = orderName;
+    node.querySelector(".order-placed-at").textContent = placedAt;
+    node.querySelector(".order-fulfilment-status").textContent = fulfilment;
+
+    const orderItems = node.querySelector(".order-items");
+    const orderItemsBlock = node.querySelector(".order-items-block");
+    orderItems.innerHTML = "";
+    if (!items.length) {
+      orderItemsBlock.hidden = true;
+      return;
+    }
+
+    orderItemsBlock.hidden = false;
+    items.slice(0, 3).forEach((entry) => {
+      const item = document.createElement("li");
+      const quantity = Number(entry.quantity || 1);
+      item.textContent = quantity > 1 ? `${entry.title} × ${quantity}` : entry.title;
+      orderItems.appendChild(item);
     });
   }
 
@@ -113,10 +271,87 @@
       .replaceAll("'", "&#039;");
   }
 
+  function renderShipments(shipments) {
+    resultsList.innerHTML = "";
+    emptyState.hidden = shipments.length > 0;
+
+    shipments.forEach((shipment) => {
+      const node = template.content.firstElementChild.cloneNode(true);
+      node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Auto";
+      node.querySelector(".tracking-number").textContent = shipment.trackingNumber;
+      renderOrderSummary(node, shipment.orderSummary);
+
+      const timeline = node.querySelector(".timeline");
+      node.querySelector(".destination").textContent = shipment.destinationCountry || "-";
+      node.dataset.status = shipment.normalizedStatus || "unknown";
+
+      const timelineData = collapseOriginEvents(shipment.events || []);
+      const events = timelineData.events;
+      node.querySelector(".event-count").textContent = events.length
+        ? `${events.length} updates`
+        : "No scans yet";
+      node.querySelector(".dispatched-at").textContent = formatDate(
+        timelineData.dispatchEvent && (timelineData.dispatchEvent.eventTime || timelineData.dispatchEvent.time)
+      );
+      node.querySelector(".updated-at-secondary").textContent = formatDate(shipment.updatedAt);
+      node.querySelector(".status-detail").textContent = normalizeDisplayText(
+        formatStatusText(shipment.providerStatus) || formatStatusText(shipment.normalizedStatus) || "-"
+      ) || "-";
+
+      const supportNotice = node.querySelector(".support-notice");
+      const shouldShowNotice = !events.length || ["exception", "failed_attempt", "unknown", "not_found"].includes(shipment.normalizedStatus);
+      const supportText = extractSupportText(shipment.providerStatusDescription)
+        || extractSupportText(shipment.statusText)
+        || shipment.supportNotice
+        || "";
+      supportNotice.textContent = supportText;
+      supportNotice.hidden = !supportText || (!shouldShowNotice && shipment.normalizedStatus !== "delivered");
+
+      const providerStatus = node.querySelector(".provider-status");
+      const providerText = normalizeDisplayText(cleanEventDescription(shipment.providerStatusDescription));
+      providerStatus.textContent = providerText;
+      providerStatus.hidden = shipment.normalizedStatus === "delivered"
+        || !providerText
+        || providerText === node.querySelector(".status-detail").textContent;
+
+      const activeIndex = PROGRESS_ORDER.indexOf(shipment.normalizedStatus);
+      node.querySelectorAll(".shipment-progress span").forEach((step, index) => {
+        step.classList.toggle("is-active", index <= activeIndex && activeIndex >= 0);
+      });
+      if (!events.length) {
+        const item = document.createElement("li");
+        item.className = "empty-event";
+        item.innerHTML = `
+          <time>-</time>
+          <div class="event-text">
+            <div class="event-title">No tracking timeline is available yet.</div>
+          </div>
+        `;
+        timeline.appendChild(item);
+      }
+
+      events.forEach((event) => {
+        const item = document.createElement("li");
+        const eventTime = event.eventTime || event.time;
+        const eventLocation = formatLocation(event.location);
+        item.innerHTML = `
+          <time>${escapeHtml(formatDate(eventTime))}</time>
+          <div class="event-text">
+            <div class="event-title">${escapeHtml(cleanEventDescription(event.description || ""))}</div>
+            ${eventLocation ? `<div class="event-location">${escapeHtml(eventLocation)}</div>` : ""}
+          </div>
+        `;
+        timeline.appendChild(item);
+      });
+
+      resultsList.appendChild(node);
+    });
+  }
+
   async function queryTracking(numbers) {
     const params = new URLSearchParams();
     params.set("nums", numbers.join(","));
-    if (carrierSelect.value) params.set("carrier", carrierSelect.value);
+    if (carrierSelect && carrierSelect.value) params.set("carrier", carrierSelect.value);
 
     const response = await fetch(`${apiEndpoint}?${params.toString()}`, {
       headers: { Accept: "application/json" }
@@ -135,7 +370,7 @@
     }
 
     trackButton.disabled = true;
-    setMessage(`Tracking ${numbers.length} shipment(s)...`);
+    setMessage(`Tracking ${numbers.length} shipment${numbers.length > 1 ? "s" : ""}...`);
 
     try {
       const data = await queryTracking(numbers);
@@ -145,7 +380,7 @@
       } else if (data.errors && data.errors.length) {
         setMessage(data.errors[0].message || "Some shipments failed to load.", true);
       } else {
-        setMessage(`Loaded ${data.shipments.length} shipment(s).`);
+        setMessage(`Loaded ${data.shipments.length} shipment${data.shipments.length > 1 ? "s" : ""}.`);
       }
     } catch (error) {
       setMessage("Tracking lookup failed. Please try again later.", true);
@@ -153,7 +388,7 @@
       resultsList.innerHTML = "";
       console.error(error);
     } finally {
-      trackButton.disabled = false;
+      startCooldown();
     }
   }
 
@@ -170,4 +405,6 @@
     textarea.value = nums;
     submitQuery();
   }
+
+  setTrackButtonLabel();
 })();

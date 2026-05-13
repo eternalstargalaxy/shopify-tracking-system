@@ -15,6 +15,11 @@
 
     <div class="tracking-layout">
       <form id="trackingForm" class="tracking-query" novalidate>
+        <div class="tracking-intro">
+          <p class="tracking-eyebrow">Delivery updates</p>
+          <p class="tracking-copy">Enter your tracking number to view the latest shipping progress.</p>
+        </div>
+
         <label class="tracking-field">
           <span>Tracking number</span>
           <textarea
@@ -22,26 +27,12 @@
             name="trackingNumbers"
             rows="5"
             spellcheck="false"
-            placeholder="YT2610601001467359"
+            placeholder="Enter your tracking number"
           ></textarea>
         </label>
 
         <div class="tracking-actions">
-          <label class="tracking-field">
-            <span>Carrier</span>
-            <select id="carrierSelect" name="carrier">
-              <option value="">Auto detect</option>
-              <option value="21051">USPS</option>
-              <option value="dhl-express">DHL Express</option>
-              <option value="fedex">FedEx</option>
-              <option value="ups">UPS</option>
-              <option value="china-post">China Post</option>
-              <option value="yunexpress">YunExpress</option>
-              <option value="sf-express">SF Express</option>
-              <option value="4px">4PX</option>
-            </select>
-          </label>
-          <button type="submit" id="trackBtn" class="tracking-button">Track</button>
+          <button type="submit" id="trackBtn" class="tracking-button">Track parcel</button>
         </div>
 
         <p id="formMessage" class="tracking-message" role="status" aria-live="polite"></p>
@@ -49,7 +40,7 @@
 
       <section class="tracking-result">
         <div class="tracking-empty" id="emptyState">
-          Enter a tracking number to check shipment status.
+          Enter a tracking number to view the latest delivery timeline.
         </div>
         <div class="tracking-result-list" id="resultsList"></div>
       </section>
@@ -64,21 +55,50 @@
         <span class="carrier-name"></span>
         <h2 class="tracking-number"></h2>
       </div>
-      <strong class="status-pill"></strong>
+    </div>
+
+    <div class="order-summary" hidden>
+      <div>
+        <span>Order</span>
+        <strong class="order-name"></strong>
+      </div>
+      <div>
+        <span>Placed</span>
+        <strong class="order-placed-at"></strong>
+      </div>
+      <div>
+        <span>Fulfilment</span>
+        <strong class="order-fulfilment-status"></strong>
+      </div>
+      <div class="order-items-block">
+        <span>Items</span>
+        <ul class="order-items"></ul>
+      </div>
     </div>
 
     <div class="shipment-meta">
       <div>
-        <span>Last update</span>
-        <strong class="updated-at"></strong>
-      </div>
-      <div>
-        <span>Origin</span>
-        <strong class="origin"></strong>
+        <span>Dispatched</span>
+        <strong class="dispatched-at"></strong>
       </div>
       <div>
         <span>Destination</span>
         <strong class="destination"></strong>
+      </div>
+    </div>
+
+    <div class="shipment-highlights">
+      <div>
+        <span>Current stage</span>
+        <strong class="status-detail"></strong>
+      </div>
+      <div>
+        <span>Last update</span>
+        <strong class="updated-at-secondary"></strong>
+      </div>
+      <div>
+        <span>Timeline</span>
+        <strong class="event-count"></strong>
       </div>
     </div>
 

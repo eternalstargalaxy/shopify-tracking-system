@@ -45,6 +45,24 @@ class TrackingEvent(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class OrderSummaryItem(BaseModel):
+    title: str
+    quantity: int = 1
+
+
+class OrderSummary(BaseModel):
+    order_name: str | None = Field(default=None, alias="orderName")
+    placed_at: str | None = Field(default=None, alias="placedAt")
+    fulfillment_status: str | None = Field(default=None, alias="fulfillmentStatus")
+    financial_status: str | None = Field(default=None, alias="financialStatus")
+    total_amount: str | None = Field(default=None, alias="totalAmount")
+    currency_code: str | None = Field(default=None, alias="currencyCode")
+    source: str | None = None
+    items: list[OrderSummaryItem] = []
+
+    model_config = {"populate_by_name": True}
+
+
 class TrackingShipment(BaseModel):
     tracking_number: str = Field(alias="trackingNumber")
     carrier_code: str | None = Field(default=None, alias="carrierCode")
@@ -59,6 +77,7 @@ class TrackingShipment(BaseModel):
     updated_at: str = Field(alias="updatedAt")
     support_notice: str = Field(alias="supportNotice")
     cached: bool
+    order_summary: OrderSummary | None = Field(default=None, alias="orderSummary")
     events: list[TrackingEvent] = []
 
     model_config = {"populate_by_name": True}

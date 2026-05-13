@@ -18,7 +18,11 @@ class Settings:
         str(ROOT_DIR / "backend" / "data" / "tracking.sqlite3"),
     )
     shopify_app_secret: str = os.getenv("SHOPIFY_APP_SECRET", "")
+    shopify_client_id: str = os.getenv("SHOPIFY_CLIENT_ID", "")
+    shopify_client_secret: str = os.getenv("SHOPIFY_CLIENT_SECRET", "")
     shopify_proxy_prefix: str = os.getenv("SHOPIFY_PROXY_PREFIX", "/apps/track/api/track")
+    shopify_admin_access_token: str = os.getenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "")
+    shopify_admin_api_version: str = os.getenv("SHOPIFY_ADMIN_API_VERSION", "2026-04")
     allowed_shop_domains: tuple[str, ...] = tuple(
         part.strip()
         for part in os.getenv("ALLOWED_SHOP_DOMAINS", "").split(",")

@@ -12,9 +12,16 @@ from fastapi.testclient import TestClient
 
 from backend.app import config as config_module
 from backend.app import main as main_module
-from backend.app.db import fetch_tracking_record, init_db, upsert_tracking_record
+from backend.app.db import (
+    fetch_tracking_record,
+    init_db,
+    is_store_order_tracking_number,
+    upsert_order_tracking_number,
+    upsert_tracking_record,
+)
 from backend.app.normalization import normalize_status, status_label
 from backend.app.seventeen_track import parse_track_info
+from backend.app import services as services_module
 from backend.app.services import parse_tracking_numbers, process_tracking_number
 
 
@@ -130,6 +137,88 @@ class CoreTests(unittest.TestCase):
                 self.assertEqual(shipment.carrier_code, "190008")
                 self.assertEqual(shipment.normalized_status, "in_transit")
                 self.assertEqual(len(shipment.events), 1)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+
+    def test_process_tracking_number_attaches_local_order_summary(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "190008",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [
+                                        {
+                                            "eventTime": "2026-05-08T03:00:00+00:00",
+                                            "location": "Shenzhen, CN",
+                                            "description": "Parcel moving",
+                                            "status": "InTransit",
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        original_db_path = config_module.settings.database_path
+        original_admin_token = services_module.shopify_admin_client.access_token
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                services_module.shopify_admin_client.access_token = ""
+                init_db()
+                upsert_order_tracking_number(
+                    tracking_number="YT2610601001467359",
+                    carrier_code="190008",
+                    shop_domain="demo.myshopify.com",
+                    order_name="#1001",
+                    source="manual",
+                )
+                shipment, error = process_tracking_number(
+                    FakeClient(),
+                    "YT2610601001467359",
+                    "190008",
+                    "demo.myshopify.com",
+                    enforce_order_match=False,
+                )
+                self.assertIsNone(error)
+                self.assertIsNotNone(shipment)
+                self.assertIsNotNone(shipment.order_summary)
+                self.assertEqual(shipment.order_summary.order_name, "#1001")
+                self.assertEqual(shipment.order_summary.source, "manual")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.shopify_admin_client.access_token = original_admin_token
+
+    def test_store_order_match_without_carrier_accepts_specific_carrier_row(self) -> None:
+        original_db_path = config_module.settings.database_path
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                upsert_order_tracking_number(
+                    tracking_number="YT2610601001467359",
+                    carrier_code="190008",
+                    shop_domain="demo.myshopify.com",
+                    order_name="#1001",
+                    source="manual",
+                )
+                self.assertTrue(
+                    is_store_order_tracking_number(
+                        "YT2610601001467359",
+                        None,
+                        "demo.myshopify.com",
+                    )
+                )
             finally:
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
 

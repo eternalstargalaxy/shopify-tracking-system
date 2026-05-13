@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from .config import settings
 from .db import (
+    fetch_order_tracking_match,
     fetch_tracking_record,
     is_store_order_tracking_number,
     list_recent_tracking_records,
@@ -15,8 +16,10 @@ from .normalization import compute_cache_expiry, status_label, support_notice
 from .rate_limit import enforce_tracking_refresh_limit
 from .schemas import QueryError, TrackingShipment
 from .seventeen_track import SeventeenTrackClient, parse_track_info
+from .shopify_admin import ShopifyAdminClient, build_local_order_summary, merge_order_summaries
 
 TRACKING_PATTERN = re.compile(r"[A-Za-z0-9]{6,42}")
+shopify_admin_client = ShopifyAdminClient()
 
 
 def parse_tracking_numbers(raw_value: str) -> list[str]:
@@ -56,6 +59,19 @@ def build_cached_shipment(record) -> TrackingShipment:
         cached=True,
         events=events,
     )
+
+
+def resolve_order_summary(
+    tracking_number: str,
+    carrier_code: str | None,
+    shop_domain: str | None,
+) -> object | None:
+    match = fetch_order_tracking_match(tracking_number, carrier_code, shop_domain)
+    local_summary = build_local_order_summary(match)
+    admin_summary = None
+    if match and shop_domain and match["order_name"]:
+        admin_summary = shopify_admin_client.lookup_order_summary(shop_domain, match["order_name"])
+    return merge_order_summaries(admin_summary, local_summary)
 
 
 def query_tracking_numbers(
@@ -140,7 +156,13 @@ def process_tracking_number(
         )
 
     if record_is_fresh(record):
-        return build_cached_shipment(record), None
+        shipment = build_cached_shipment(record)
+        shipment.order_summary = resolve_order_summary(
+            tracking_number,
+            resolved_carrier_code,
+            shop_domain,
+        )
+        return shipment, None
 
     enforce_tracking_refresh_limit(f"{tracking_number}:{resolved_carrier_code or 'auto'}")
 
@@ -186,6 +208,11 @@ def process_tracking_number(
         updatedAt=payload["last_fetched_at"],
         supportNotice=support_notice(parsed["normalized_status"]),
         cached=False,
+        orderSummary=resolve_order_summary(
+            parsed["tracking_number"],
+            parsed["carrier_code"],
+            shop_domain,
+        ),
         events=parsed["events"],
     )
     return shipment, None

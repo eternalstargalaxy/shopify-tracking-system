@@ -1,18 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600&family=Montserrat:wght@400;500;600;700&display=swap");
+
 :root {
   color-scheme: light;
-  --bg: #f6f7f8;
+  --bg: #fcfaf3;
   --surface: #ffffff;
-  --surface-soft: #f3f6f8;
-  --line: #d9e0e6;
-  --text: #1f2a33;
-  --muted: #687682;
-  --accent: #1769e0;
-  --success: #1b9c7a;
-  --warn: #c7861b;
-  --danger: #c9584d;
-  --radius: 8px;
-  --shadow: 0 20px 50px rgba(16, 24, 32, 0.08);
-  font-family: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --surface-soft: #fdf2e6;
+  --line: #e6ddd2;
+  --text: #543c29;
+  --muted: #7b6a58;
+  --accent: #543c29;
+  --success: #6e5a45;
+  --warn: #8b6841;
+  --danger: #9d5248;
+  --radius: 0;
+  --shadow: none;
+  font-family: "Montserrat", "Segoe UI", sans-serif;
 }
 
 * {
@@ -21,11 +23,11 @@
 
 .tracking-page {
   padding: 40px 20px 64px;
-  background: linear-gradient(180deg, #eef5ff, var(--bg) 260px);
+  background: var(--bg);
 }
 
 .tracking-shell {
-  width: min(1080px, 100%);
+  width: min(1360px, 100%);
   margin: 0 auto;
 }
 
@@ -34,12 +36,14 @@
   color: var(--text);
   font-size: clamp(30px, 5vw, 52px);
   line-height: 1;
+  font-family: "EB Garamond", Georgia, serif;
+  font-weight: 500;
 }
 
 .tracking-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.6fr);
+  gap: 26px;
 }
 
 .tracking-query,
@@ -47,19 +51,50 @@
 .shipment-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .tracking-query,
 .tracking-result {
-  padding: 20px;
+  padding: 24px;
 }
 
 .tracking-query {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   align-content: start;
+}
+
+.tracking-result {
+  min-width: 0;
+}
+
+.tracking-intro {
+  display: grid;
+  gap: 6px;
+}
+
+.tracking-eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tracking-copy {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.tracking-helper {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .tracking-field {
@@ -69,46 +104,52 @@
 
 .tracking-field span,
 .shipment-meta span,
-.carrier-name {
+.shipment-highlights span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
 }
 
-.tracking-field textarea,
-.tracking-field select {
-  width: 100%;
-  color: var(--text);
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  outline: 0;
+.carrier-name {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .tracking-field textarea {
+  width: 100%;
   min-height: 140px;
   padding: 14px;
   resize: vertical;
-}
-
-.tracking-field select {
-  min-height: 48px;
-  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  outline: 0;
+  font-family: inherit;
 }
 
 .tracking-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px;
-  gap: 10px;
+  display: block;
 }
 
 .tracking-button {
-  align-self: end;
+  width: 100%;
   min-height: 48px;
   color: #fff;
   background: var(--accent);
-  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  font-family: inherit;
   font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.tracking-button:disabled {
+  opacity: 0.76;
+  cursor: not-allowed;
 }
 
 .tracking-message {
@@ -132,11 +173,11 @@
 
 .tracking-result-list {
   display: grid;
-  gap: 14px;
+  gap: 18px;
 }
 
 .shipment-card {
-  padding: 20px;
+  padding: 24px;
 }
 
 .shipment-head {
@@ -148,64 +189,87 @@
 
 .tracking-number {
   margin: 6px 0 0;
-  overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 22px;
+  font-size: clamp(20px, 2.2vw, 34px);
+  font-family: "EB Garamond", Georgia, serif;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-pill {
   min-height: 30px;
   padding: 7px 11px;
-  border-radius: 999px;
+  border-radius: 0;
   font-size: 12px;
   font-weight: 900;
 }
 
 .status-pill.is-info_received,
 .status-pill.is-in_transit {
-  color: #0d4a3b;
-  background: #d9f3eb;
+  color: #543c29;
+  background: #f3e4d2;
 }
 
 .status-pill.is-out_for_delivery {
-  color: #5f4709;
-  background: #fff0ce;
+  color: #543c29;
+  background: #f8ecd9;
 }
 
 .status-pill.is-delivered {
-  color: #0f4d32;
-  background: #daf5e3;
+  color: #543c29;
+  background: #efe7dc;
 }
 
 .status-pill.is-exception,
 .status-pill.is-failed_attempt {
-  color: #7b2f28;
-  background: #fde3e0;
+  color: #9d5248;
+  background: #f7e6e2;
 }
 
 .status-pill.is-not_found,
 .status-pill.is-expired,
 .status-pill.is-unknown {
-  color: #5b6570;
-  background: #edf1f4;
+  color: #7b6a58;
+  background: #f5f1ea;
 }
 
-.shipment-meta {
+.shipment-meta,
+.shipment-highlights,
+.order-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.order-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 18px;
 }
 
-.shipment-meta div {
+.shipment-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.shipment-highlights {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.shipment-meta div,
+.shipment-highlights div,
+.order-summary > div {
   min-width: 0;
   padding: 13px;
   background: var(--surface-soft);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 0;
 }
 
-.shipment-meta strong {
+.shipment-meta strong,
+.shipment-highlights strong,
+.order-summary strong {
   display: block;
   margin-top: 6px;
   overflow-wrap: anywhere;
@@ -213,13 +277,29 @@
   font-size: 14px;
 }
 
+.order-items-block {
+  grid-column: 1 / -1;
+}
+
+.order-items {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.order-items li + li {
+  margin-top: 4px;
+}
+
 .support-notice {
   margin: 16px 0 0;
   padding: 14px 16px;
   color: var(--text);
-  background: #f6f8fa;
+  background: #fcfaf3;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 0;
   line-height: 1.5;
 }
 
@@ -232,8 +312,8 @@
 
 .shipment-progress span {
   height: 8px;
-  background: #e6ebef;
-  border-radius: 999px;
+  background: #eadfce;
+  border-radius: 0;
 }
 
 .shipment-progress span.is-active {
@@ -266,8 +346,8 @@
 .timeline li {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(86px, 104px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(96px, 118px) minmax(0, 1fr);
+  gap: 18px;
   padding: 14px 0 14px 20px;
 }
 
@@ -279,7 +359,7 @@
   width: 9px;
   height: 9px;
   background: var(--accent);
-  border-radius: 999px;
+  border-radius: 50%;
 }
 
 .timeline li::after {
@@ -313,8 +393,9 @@
 .timeline .event-title {
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 14px;
-  font-weight: 760;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .timeline .event-location {
@@ -323,7 +404,7 @@
   font-size: 13px;
 }
 
-@media (max-width: 840px) {
+@media (max-width: 980px) {
   .tracking-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -334,8 +415,9 @@
     padding: 24px 14px 48px;
   }
 
-  .tracking-actions,
-  .shipment-meta {
+  .shipment-meta,
+  .shipment-highlights,
+  .order-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -344,7 +426,7 @@
   }
 
   .timeline li {
-    grid-template-columns: minmax(0, 84px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 88px) minmax(0, 1fr);
     gap: 12px;
   }
 }
