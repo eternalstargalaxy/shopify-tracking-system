@@ -21,6 +21,8 @@ class Settings:
     shopify_client_id: str = os.getenv("SHOPIFY_CLIENT_ID", "")
     shopify_client_secret: str = os.getenv("SHOPIFY_CLIENT_SECRET", "")
     shopify_proxy_prefix: str = os.getenv("SHOPIFY_PROXY_PREFIX", "/apps/track/api/track")
+    shopify_store_slug: str = os.getenv("SHOPIFY_STORE_SLUG", "")
+    shopify_storefront_url: str = os.getenv("SHOPIFY_STOREFRONT_URL", "")
     shopify_admin_access_token: str = os.getenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "")
     shopify_admin_api_version: str = os.getenv("SHOPIFY_ADMIN_API_VERSION", "2026-04")
     allowed_shop_domains: tuple[str, ...] = tuple(
@@ -33,6 +35,10 @@ class Settings:
     seventeen_track_base_url: str = os.getenv(
         "SEVENTEEN_TRACK_BASE_URL",
         "https://api.17track.net/track/v2",
+    )
+    seventeen_track_shopify_url: str = os.getenv(
+        "SEVENTEEN_TRACK_SHOPIFY_URL",
+        "https://shopify.17track.net/trackcenterapi/call",
     )
     require_order_tracking_match: bool = (
         os.getenv("REQUIRE_ORDER_TRACKING_MATCH", "false").lower() == "true"

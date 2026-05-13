@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const config = window.TRACKING_CONFIG || {};
   const apiEndpoint = config.apiEndpoint || "/apps/track/api/track";
 
@@ -40,6 +40,17 @@
     "label created",
     "information received"
   ];
+  const STATUS_SENTENCES = {
+    info_received: "Your order has been dispatched.",
+    in_transit: "Your order is in transit.",
+    out_for_delivery: "Your order is out for delivery.",
+    delivered: "Your order has been delivered.",
+    exception: "There is an issue with this delivery.",
+    failed_attempt: "A delivery attempt was unsuccessful.",
+    not_found: "Tracking updates are not available yet.",
+    expired: "This tracking record has expired.",
+    unknown: "We are checking the latest delivery updates."
+  };
   const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
@@ -229,37 +240,45 @@
 
   function renderOrderSummary(node, orderSummary) {
     const container = node.querySelector(".order-summary");
+    const panel = node.querySelector(".order-summary-panel");
     if (!container) return;
     if (!orderSummary || (!orderSummary.orderName && !orderSummary.placedAt && !orderSummary.fulfillmentStatus && !(orderSummary.items || []).length)) {
       container.hidden = true;
+      if (panel) panel.hidden = true;
       return;
     }
 
-    const orderName = normalizeDisplayText(orderSummary.orderName) || "-";
-    const placedAt = orderSummary.placedAt ? formatDate(orderSummary.placedAt) : "-";
-    const fulfilment = normalizeDisplayText(orderSummary.fulfillmentStatus) || "-";
+    const orderName = normalizeDisplayText(orderSummary.orderName);
+    const placedAt = orderSummary.placedAt ? formatDate(orderSummary.placedAt) : "";
+    const fulfilment = normalizeDisplayText(orderSummary.fulfillmentStatus);
     const items = Array.isArray(orderSummary.items) ? orderSummary.items : [];
 
-    container.hidden = false;
-    node.querySelector(".order-name").textContent = orderName;
-    node.querySelector(".order-placed-at").textContent = placedAt;
-    node.querySelector(".order-fulfilment-status").textContent = fulfilment;
+    const orderNameBlock = node.querySelector(".order-name-block");
+    const orderPlacedBlock = node.querySelector(".order-placed-block");
+    const orderFulfilmentBlock = node.querySelector(".order-fulfilment-block");
+    const orderItemsBlock = node.querySelector(".order-items-block");
+    node.querySelector(".order-name").textContent = orderName || "";
+    node.querySelector(".order-placed-at").textContent = placedAt || "";
+    node.querySelector(".order-fulfilment-status").textContent = fulfilment || "";
+    orderNameBlock.hidden = !orderName;
+    orderPlacedBlock.hidden = !placedAt;
+    orderFulfilmentBlock.hidden = !fulfilment;
 
     const orderItems = node.querySelector(".order-items");
-    const orderItemsBlock = node.querySelector(".order-items-block");
     orderItems.innerHTML = "";
-    if (!items.length) {
-      orderItemsBlock.hidden = true;
-      return;
-    }
-
-    orderItemsBlock.hidden = false;
     items.slice(0, 3).forEach((entry) => {
       const item = document.createElement("li");
       const quantity = Number(entry.quantity || 1);
       item.textContent = quantity > 1 ? `${entry.title} × ${quantity}` : entry.title;
       orderItems.appendChild(item);
     });
+    orderItemsBlock.hidden = !items.length;
+
+    container.hidden = orderNameBlock.hidden
+      && orderPlacedBlock.hidden
+      && orderFulfilmentBlock.hidden
+      && orderItemsBlock.hidden;
+    if (panel) panel.hidden = container.hidden;
   }
 
   function escapeHtml(value) {
@@ -279,6 +298,7 @@
       const node = template.content.firstElementChild.cloneNode(true);
       node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Auto";
       node.querySelector(".tracking-number").textContent = shipment.trackingNumber;
+      node.querySelector(".shipment-summary-line").textContent = STATUS_SENTENCES[shipment.normalizedStatus] || "Tracking updates are available below.";
       renderOrderSummary(node, shipment.orderSummary);
 
       const timeline = node.querySelector(".timeline");

@@ -127,7 +127,9 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
     track = item.get("track_info") or item.get("track") or item.get("data") or item
 
     latest_status = track.get("latest_status") or {}
-    latest_event = track.get("latest_event") or {}
+    latest_event_raw = track.get("latest_event")
+    latest_event = latest_event_raw if isinstance(latest_event_raw, dict) else {}
+    latest_event_text = _text(latest_event_raw) if latest_event_raw and not isinstance(latest_event_raw, dict) else ""
 
     main_status = _optional_text(
         latest_status.get("status")
@@ -138,6 +140,7 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
         latest_event.get("description")
         or latest_status.get("sub_status_descr")
         or track.get("z1")
+        or latest_event_text
         or track.get("latest_event")
         or "No tracking updates"
     )
@@ -145,6 +148,7 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
         track.get("provider_status_description")
         or latest_event.get("description")
         or latest_status.get("sub_status_descr")
+        or latest_event_text
         or status_text
     )
     provider_status_description = _text(provider_status_description)
@@ -185,7 +189,6 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
         provider_status = _text(
             event.get("stage")
             or event.get("status")
-            or main_status
             or ""
         )
         event_description = _text(

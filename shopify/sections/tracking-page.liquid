@@ -16,19 +16,20 @@
     <div class="tracking-layout">
       <form id="trackingForm" class="tracking-query" novalidate>
         <div class="tracking-intro">
-          <p class="tracking-eyebrow">Delivery updates</p>
           <p class="tracking-copy">Enter your tracking number to view the latest shipping progress.</p>
         </div>
 
         <label class="tracking-field">
           <span>Tracking number</span>
-          <textarea
+          <input
             id="trackingNumbers"
             name="trackingNumbers"
-            rows="5"
             spellcheck="false"
             placeholder="Enter your tracking number"
-          ></textarea>
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+          >
         </label>
 
         <div class="tracking-actions">
@@ -50,70 +51,83 @@
 
 <template id="shipmentTemplate">
   <article class="shipment-card">
-    <div class="shipment-head">
-      <div>
-        <span class="carrier-name"></span>
-        <h2 class="tracking-number"></h2>
-      </div>
-    </div>
+    <p class="shipment-summary-line"></p>
 
-    <div class="order-summary" hidden>
-      <div>
-        <span>Order</span>
-        <strong class="order-name"></strong>
+    <section class="info-panel tracking-info-panel">
+      <div class="panel-heading">
+        <h2>Tracking Information</h2>
       </div>
-      <div>
-        <span>Placed</span>
-        <strong class="order-placed-at"></strong>
-      </div>
-      <div>
-        <span>Fulfilment</span>
-        <strong class="order-fulfilment-status"></strong>
-      </div>
-      <div class="order-items-block">
-        <span>Items</span>
-        <ul class="order-items"></ul>
-      </div>
-    </div>
 
-    <div class="shipment-meta">
-      <div>
-        <span>Dispatched</span>
-        <strong class="dispatched-at"></strong>
+      <div class="shipment-head">
+        <div class="shipment-head-main">
+          <span class="carrier-name"></span>
+          <h3 class="tracking-number"></h3>
+        </div>
       </div>
-      <div>
-        <span>Destination</span>
-        <strong class="destination"></strong>
+
+      <div class="shipment-meta">
+        <div>
+          <span>Dispatched</span>
+          <strong class="dispatched-at"></strong>
+        </div>
+        <div>
+          <span>Destination</span>
+          <strong class="destination"></strong>
+        </div>
       </div>
-    </div>
 
-    <div class="shipment-highlights">
-      <div>
-        <span>Current stage</span>
-        <strong class="status-detail"></strong>
+      <div class="shipment-highlights">
+        <div>
+          <span>Current stage</span>
+          <strong class="status-detail"></strong>
+        </div>
+        <div>
+          <span>Last update</span>
+          <strong class="updated-at-secondary"></strong>
+        </div>
+        <div>
+          <span>Timeline</span>
+          <strong class="event-count"></strong>
+        </div>
       </div>
-      <div>
-        <span>Last update</span>
-        <strong class="updated-at-secondary"></strong>
+
+      <p class="support-notice"></p>
+
+      <div class="shipment-progress" aria-hidden="true">
+        <span data-step="info_received"></span>
+        <span data-step="in_transit"></span>
+        <span data-step="out_for_delivery"></span>
+        <span data-step="delivered"></span>
       </div>
-      <div>
-        <span>Timeline</span>
-        <strong class="event-count"></strong>
+
+      <p class="provider-status"></p>
+
+      <ol class="timeline"></ol>
+    </section>
+
+    <section class="info-panel order-summary-panel" hidden>
+      <div class="panel-heading">
+        <h2>Order Information</h2>
       </div>
-    </div>
-
-    <p class="support-notice"></p>
-
-    <div class="shipment-progress" aria-hidden="true">
-      <span data-step="info_received"></span>
-      <span data-step="in_transit"></span>
-      <span data-step="out_for_delivery"></span>
-      <span data-step="delivered"></span>
-    </div>
-
-    <p class="provider-status"></p>
-
-    <ol class="timeline"></ol>
+      <div class="order-summary" hidden>
+        <div class="order-name-block">
+          <span>Order</span>
+          <strong class="order-name"></strong>
+        </div>
+        <div class="order-placed-block">
+          <span>Placed</span>
+          <strong class="order-placed-at"></strong>
+        </div>
+        <div class="order-fulfilment-block">
+          <span>Fulfilment</span>
+          <strong class="order-fulfilment-status"></strong>
+        </div>
+        <div class="order-items-block">
+          <span>Items</span>
+          <ul class="order-items"></ul>
+        </div>
+      </div>
+    </section>
   </article>
 </template>
 

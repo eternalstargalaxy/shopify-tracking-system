@@ -199,6 +199,81 @@ class CoreTests(unittest.TestCase):
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
                 services_module.shopify_admin_client.access_token = original_admin_token
 
+    def test_process_tracking_number_uses_storefront_lookup(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "190094",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [
+                                        {
+                                            "eventTime": "2026-05-12T03:00:00+00:00",
+                                            "location": "Manchester, GB",
+                                            "description": "Parcel moving",
+                                            "status": "InTransit",
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        class FakeStorefrontLookup:
+            order_name = "LUK2806"
+            carrier_code = "190094"
+            carrier_name = "4PX"
+            destination_country = "GB"
+            order_summary = services_module.build_local_order_summary(
+                {
+                    "order_name": "LUK2806",
+                    "source": "17track_shopify",
+                }
+            )
+
+        original_db_path = config_module.settings.database_path
+        original_lookup = services_module.storefront_client.lookup_by_tracking
+        original_admin_token = services_module.shopify_admin_client.access_token
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                services_module.storefront_client.lookup_by_tracking = lambda *_args, **_kwargs: FakeStorefrontLookup()
+                services_module.shopify_admin_client.access_token = ""
+                init_db()
+                shipment, error = process_tracking_number(
+                    FakeClient(),
+                    "4PX3002754801725CN",
+                    None,
+                    "demo.myshopify.com",
+                    enforce_order_match=True,
+                )
+                self.assertIsNone(error)
+                self.assertIsNotNone(shipment)
+                self.assertEqual(shipment.carrier_code, "190094")
+                self.assertEqual(shipment.destination_country, "GB")
+                self.assertIsNotNone(shipment.order_summary)
+                self.assertEqual(shipment.order_summary.order_name, "LUK2806")
+                self.assertTrue(
+                    is_store_order_tracking_number(
+                        "4PX3002754801725CN",
+                        "190094",
+                        "demo.myshopify.com",
+                    )
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_tracking = original_lookup
+                services_module.shopify_admin_client.access_token = original_admin_token
+
     def test_store_order_match_without_carrier_accepts_specific_carrier_row(self) -> None:
         original_db_path = config_module.settings.database_path
         with workspace_temp_dir() as temp_dir:
@@ -399,6 +474,33 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(parsed["events"]), 2)
         self.assertEqual(parsed["events"][0]["providerStatus"], "Delivered")
         self.assertEqual(parsed["events"][1]["providerStatus"], "OutForDelivery")
+
+    def test_parse_track_info_handles_string_latest_event(self) -> None:
+        parsed = parse_track_info(
+            {
+                "data": {
+                    "accepted": [
+                        {
+                            "number": "4PX3002754801725CN",
+                            "carrier": "190094",
+                            "track": {
+                                "z0": "NotFound",
+                                "z1": "No tracking updates yet",
+                                "latest_event": "No tracking updates yet",
+                                "origin_info": {"item_pre_advice": "CN"},
+                                "destination_info": {"item_dest_country": "GB"},
+                                "tracking": [],
+                            },
+                        }
+                    ]
+                }
+            },
+            "4PX3002754801725CN",
+        )
+        self.assertEqual(parsed["carrier_code"], "190094")
+        self.assertEqual(parsed["provider_status"], "NotFound")
+        self.assertEqual(parsed["status_text"], "No tracking updates yet")
+        self.assertEqual(parsed["destination_country"], "GB")
 
 
 if __name__ == "__main__":
