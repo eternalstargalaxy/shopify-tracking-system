@@ -115,16 +115,21 @@ class SeventeenTrackClient:
 
 
 def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
-    accepted = (
-        raw_response.get("data", {}).get("accepted")
-        or raw_response.get("accepted")
-        or raw_response.get("data")
-        or []
-    )
-    if isinstance(accepted, dict):
-        accepted = [accepted]
-    item = accepted[0] if accepted else {}
-    track = item.get("track_info") or item.get("track") or item.get("data") or item
+    shipments = raw_response.get("shipments") or []
+    if shipments:
+        item = shipments[0] if shipments else {}
+        track = item.get("shipment") or {}
+    else:
+        accepted = (
+            raw_response.get("data", {}).get("accepted")
+            or raw_response.get("accepted")
+            or raw_response.get("data")
+            or []
+        )
+        if isinstance(accepted, dict):
+            accepted = [accepted]
+        item = accepted[0] if accepted else {}
+        track = item.get("track_info") or item.get("track") or item.get("data") or item
 
     latest_status = track.get("latest_status") or {}
     latest_event_raw = track.get("latest_event")
@@ -205,16 +210,16 @@ def parse_track_info(raw_response: dict, tracking_number: str) -> dict:
             or event.get("time")
             or ""
         )
+        location_value = (
+            event.get("location")
+            or event.get("address", {}).get("city")
+            or ""
+        )
         events.append(
             {
                 "time": event_time,
                 "eventTime": event_time,
-                "location": _text(
-                    event.get("location")
-                    or event.get("address", {}).get("city")
-                    or event.get("address")
-                    or ""
-                ),
+                "location": _text(location_value),
                 "description": event_description,
                 "raw_status": provider_status,
                 "providerStatus": provider_status,

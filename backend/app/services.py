@@ -44,6 +44,15 @@ def record_is_fresh(record: dict | None, now: datetime | None = None) -> bool:
     return datetime.fromisoformat(record["cache_expires_at"]) > now
 
 
+def _record_has_tracking_events(record: dict | None) -> bool:
+    if not record:
+        return False
+    try:
+        return bool(json.loads(record["events_json"] or "[]"))
+    except json.JSONDecodeError:
+        return False
+
+
 def build_cached_shipment(record) -> TrackingShipment:
     events = json.loads(record["events_json"] or "[]")
     return TrackingShipment(
@@ -175,6 +184,15 @@ def process_tracking_number(
         )
         store_match = True
 
+    if (
+        record
+        and storefront_lookup
+        and storefront_lookup.tracking_params.get("fc")
+        and record["normalized_status"] in {"unknown", "not_found"}
+        and not _record_has_tracking_events(record)
+    ):
+        record = None
+
     if should_enforce_order_match and not store_match:
         return None, QueryError(
             trackingNumber=tracking_number,
@@ -198,15 +216,28 @@ def process_tracking_number(
     if not is_registered:
         client.register(tracking_number, resolved_carrier_code)
 
-    raw_response = client.get_track_info(tracking_number, resolved_carrier_code)
-    parsed = parse_track_info(raw_response, tracking_number)
-    if _should_retry_with_detected_carrier(parsed, resolved_carrier_code):
-        detected_carrier = parsed["carrier_code"]
-        client.register(tracking_number, detected_carrier)
-        retry_response = client.get_track_info(tracking_number, detected_carrier)
-        retry_parsed = parse_track_info(retry_response, tracking_number)
-        if _result_score(retry_parsed) > _result_score(parsed):
-            parsed = retry_parsed
+    parsed = None
+    if storefront_lookup and storefront_lookup.tracking_params.get("fc"):
+        detail_response = storefront_client.fetch_tracking_detail(
+            storefront_lookup,
+            tracking_number,
+            shop_domain,
+        )
+        if detail_response:
+            parsed = parse_track_info(detail_response, tracking_number)
+
+    if not parsed or (
+        parsed.get("normalized_status") in {"unknown", "not_found"} and not parsed.get("events")
+    ):
+        raw_response = client.get_track_info(tracking_number, resolved_carrier_code)
+        parsed = parse_track_info(raw_response, tracking_number)
+        if _should_retry_with_detected_carrier(parsed, resolved_carrier_code):
+            detected_carrier = parsed["carrier_code"]
+            client.register(tracking_number, detected_carrier)
+            retry_response = client.get_track_info(tracking_number, detected_carrier)
+            retry_parsed = parse_track_info(retry_response, tracking_number)
+            if _result_score(retry_parsed) > _result_score(parsed):
+                parsed = retry_parsed
 
     if storefront_lookup:
         if not parsed.get("carrier_code") and storefront_lookup.carrier_code:

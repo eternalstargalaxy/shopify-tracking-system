@@ -264,12 +264,30 @@
     orderPlacedBlock.hidden = !placedAt;
     orderFulfilmentBlock.hidden = !fulfilment;
 
-    const orderItems = node.querySelector(".order-items");
+    const orderItems = node.querySelector(".order-items-grid");
     orderItems.innerHTML = "";
-    items.slice(0, 3).forEach((entry) => {
-      const item = document.createElement("li");
+    items.slice(0, 4).forEach((entry) => {
+      const item = document.createElement("article");
       const quantity = Number(entry.quantity || 1);
-      item.textContent = quantity > 1 ? `${entry.title} × ${quantity}` : entry.title;
+      const title = normalizeDisplayText(entry.title);
+      const variant = normalizeDisplayText(entry.variant);
+      const unitPrice = normalizeDisplayText(entry.unitPrice);
+      const imageUrl = normalizeDisplayText(entry.imageUrl);
+      const itemUrl = normalizeDisplayText(entry.itemUrl);
+      const fullUrl = itemUrl ? new URL(itemUrl, window.location.origin).toString() : "";
+      const inner = `
+        ${imageUrl ? `<div class="order-item-media"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}"></div>` : ""}
+        <div class="order-item-copy">
+          <div class="order-item-title-row">
+            ${fullUrl ? `<a class="order-item-title" href="${escapeHtml(fullUrl)}">${escapeHtml(title)}</a>` : `<strong class="order-item-title">${escapeHtml(title)}</strong>`}
+            ${unitPrice ? `<span class="order-item-price">${escapeHtml(unitPrice)}</span>` : ""}
+          </div>
+          ${variant ? `<div class="order-item-variant">${escapeHtml(variant)}</div>` : ""}
+          <div class="order-item-qty">× ${quantity}</div>
+        </div>
+      `;
+      item.className = "order-item-card";
+      item.innerHTML = inner;
       orderItems.appendChild(item);
     });
     orderItemsBlock.hidden = !items.length;
@@ -296,7 +314,7 @@
 
     shipments.forEach((shipment) => {
       const node = template.content.firstElementChild.cloneNode(true);
-      node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Auto";
+      node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Carrier pending";
       node.querySelector(".tracking-number").textContent = shipment.trackingNumber;
       node.querySelector(".shipment-summary-line").textContent = STATUS_SENTENCES[shipment.normalizedStatus] || "Tracking updates are available below.";
       renderOrderSummary(node, shipment.orderSummary);

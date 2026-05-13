@@ -186,7 +186,7 @@ def merge_order_summaries(primary: OrderSummary | None, fallback: OrderSummary |
         totalAmount=primary.total_amount or fallback.total_amount,
         currencyCode=primary.currency_code or fallback.currency_code,
         source=primary.source or fallback.source,
-        items=primary.items or fallback.items,
+        items=_merge_items(primary.items, fallback.items),
     )
 
 
@@ -194,3 +194,18 @@ def _format_admin_status(value: str | None) -> str | None:
     if not value:
         return None
     return value.replace("_", " ").title()
+
+
+def _merge_items(primary_items: list[OrderSummaryItem], fallback_items: list[OrderSummaryItem]) -> list[OrderSummaryItem]:
+    if not primary_items:
+        return fallback_items
+    if not fallback_items:
+        return primary_items
+
+    fallback_has_richer_media = any(
+        item.image_url or item.item_url or item.unit_price or item.variant
+        for item in fallback_items
+    )
+    if fallback_has_richer_media:
+        return fallback_items
+    return primary_items

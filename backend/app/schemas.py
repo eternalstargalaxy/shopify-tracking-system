@@ -48,6 +48,13 @@ class TrackingEvent(BaseModel):
 class OrderSummaryItem(BaseModel):
     title: str
     quantity: int = 1
+    variant: str | None = None
+    image_url: str | None = Field(default=None, alias="imageUrl")
+    item_url: str | None = Field(default=None, alias="itemUrl")
+    unit_price: str | None = Field(default=None, alias="unitPrice")
+    currency_code: str | None = Field(default=None, alias="currencyCode")
+
+    model_config = {"populate_by_name": True}
 
 
 class OrderSummary(BaseModel):

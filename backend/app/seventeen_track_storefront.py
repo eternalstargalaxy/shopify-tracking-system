@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from time import sleep
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -18,12 +19,14 @@ class StoreOrderLookup:
     destination_country: str | None
     last_mile_tracking_number: str | None
     order_summary: OrderSummary | None
+    tracking_params: dict
     raw_response: dict
 
 
 class SeventeenTrackStorefrontClient:
     def __init__(self) -> None:
         self.base_url = settings.seventeen_track_shopify_url
+        self.tracking_url = settings.seventeen_track_shopify_tracking_url
 
     def lookup_by_tracking(self, tracking_number: str, shop_domain: str | None) -> StoreOrderLookup | None:
         shop_slug = _resolve_shop_slug(shop_domain)
@@ -71,6 +74,47 @@ class SeventeenTrackStorefrontClient:
         raw = self._post(payload, shop_domain, order_number=order_number)
         return _parse_store_lookup(raw)
 
+    def fetch_tracking_detail(
+        self,
+        lookup: StoreOrderLookup,
+        tracking_number: str,
+        shop_domain: str | None,
+        *,
+        language: str = "en",
+    ) -> dict:
+        tracking_params = lookup.tracking_params or {}
+        if not tracking_params.get("fc") or not tracking_params.get("g"):
+            return {}
+
+        payload = {
+            "data": [
+                {
+                    "num": tracking_params.get("num") or tracking_number,
+                    "fc": tracking_params.get("fc"),
+                    "sc": tracking_params.get("sc") or 0,
+                    "params": tracking_params.get("params") or {},
+                }
+            ],
+            "g": tracking_params.get("g"),
+            "lang": language,
+            "timeZoneOffset": 0,
+        }
+
+        guid = None
+        for _ in range(3):
+            if guid:
+                payload["guid"] = guid
+            raw = self._post_tracking(payload, shop_domain, tracking_number=tracking_number)
+            shipments = raw.get("shipments") or []
+            shipment = shipments[0] if shipments else {}
+            if shipment.get("code") == 200 and shipment.get("shipment"):
+                return raw
+            guid = raw.get("guid") or guid
+            if shipment.get("code") != 100:
+                return raw
+            sleep(1.6)
+        return raw
+
     def _post(
         self,
         payload: dict,
@@ -104,6 +148,39 @@ class SeventeenTrackStorefrontClient:
 
         try:
             with urlopen(request, timeout=15) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return {}
+
+    def _post_tracking(
+        self,
+        payload: dict,
+        shop_domain: str | None,
+        *,
+        tracking_number: str | None = None,
+    ) -> dict:
+        storefront_url = _resolve_storefront_url(shop_domain)
+        if not storefront_url:
+            return {}
+
+        query = urlencode({"nums": tracking_number}) if tracking_number else ""
+        referer = f"{storefront_url}/apps/17TRACK"
+        if query:
+            referer = f"{referer}?{query}"
+
+        request = Request(
+            url=self.tracking_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Origin": storefront_url,
+                "Referer": referer,
+            },
+            method="POST",
+        )
+
+        try:
+            with urlopen(request, timeout=20) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
             return {}
@@ -156,6 +233,11 @@ def _parse_store_lookup(raw: dict) -> StoreOrderLookup | None:
             OrderSummaryItem(
                 title=title,
                 quantity=int(item.get("count") or 1),
+                variant=_text(item.get("variety")) or None,
+                imageUrl=_text(item.get("image_url")) or None,
+                itemUrl=_text(item.get("item_url")) or None,
+                unitPrice=_text(item.get("unit_price")) or None,
+                currencyCode=_text(item.get("currency_code")) or None,
             )
         )
 
@@ -176,6 +258,13 @@ def _parse_store_lookup(raw: dict) -> StoreOrderLookup | None:
         destination_country=_text(info.get("destCountry")) or None,
         last_mile_tracking_number=_text(last_mile.get("track_no")) or None,
         order_summary=order_summary,
+        tracking_params={
+            "num": _text(info.get("no")) or None,
+            "fc": info.get("fc"),
+            "sc": info.get("sc"),
+            "g": _text(info.get("g")) or None,
+            "params": info.get("params") or {},
+        },
         raw_response=raw,
     )
 

@@ -40,6 +40,10 @@ class Settings:
         "SEVENTEEN_TRACK_SHOPIFY_URL",
         "https://shopify.17track.net/trackcenterapi/call",
     )
+    seventeen_track_shopify_tracking_url: str = os.getenv(
+        "SEVENTEEN_TRACK_SHOPIFY_TRACKING_URL",
+        "https://shopify-t.17track.net/track/shopify",
+    )
     require_order_tracking_match: bool = (
         os.getenv("REQUIRE_ORDER_TRACKING_MATCH", "false").lower() == "true"
     )

@@ -233,6 +233,7 @@ class CoreTests(unittest.TestCase):
             carrier_code = "190094"
             carrier_name = "4PX"
             destination_country = "GB"
+            tracking_params = {"fc": 190094, "g": "demo-guid", "num": "4PX3002754801725CN", "sc": 0, "params": {}}
             order_summary = services_module.build_local_order_summary(
                 {
                     "order_name": "LUK2806",
@@ -242,11 +243,50 @@ class CoreTests(unittest.TestCase):
 
         original_db_path = config_module.settings.database_path
         original_lookup = services_module.storefront_client.lookup_by_tracking
+        original_detail_lookup = services_module.storefront_client.fetch_tracking_detail
         original_admin_token = services_module.shopify_admin_client.access_token
         with workspace_temp_dir() as temp_dir:
             try:
                 object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
                 services_module.storefront_client.lookup_by_tracking = lambda *_args, **_kwargs: FakeStorefrontLookup()
+                services_module.storefront_client.fetch_tracking_detail = (
+                    lambda *_args, **_kwargs: {
+                        "shipments": [
+                            {
+                                "code": 200,
+                                "number": "4PX3002754801725CN",
+                                "carrier": 190094,
+                                "shipment": {
+                                    "shipping_info": {
+                                        "shipper_address": {"country": "CN"},
+                                        "recipient_address": {"country": "GB"},
+                                    },
+                                    "latest_status": {"status": "InTransit"},
+                                    "latest_event": {
+                                        "time_utc": "2026-05-12T23:59:44Z",
+                                        "description": "Depart from facility to service provider.",
+                                        "location": "Nancheng",
+                                    },
+                                    "tracking": {
+                                        "providers": [
+                                            {
+                                                "provider": {"key": 190094, "name": "4PX"},
+                                                "events": [
+                                                    {
+                                                        "time_utc": "2026-05-12T23:59:44Z",
+                                                        "description": "Depart from facility to service provider.",
+                                                        "location": "Nancheng",
+                                                        "stage": "InTransit",
+                                                    }
+                                                ],
+                                            }
+                                        ]
+                                    },
+                                },
+                            }
+                        ]
+                    }
+                )
                 services_module.shopify_admin_client.access_token = ""
                 init_db()
                 shipment, error = process_tracking_number(
@@ -259,7 +299,10 @@ class CoreTests(unittest.TestCase):
                 self.assertIsNone(error)
                 self.assertIsNotNone(shipment)
                 self.assertEqual(shipment.carrier_code, "190094")
+                self.assertEqual(shipment.carrier_name, "4PX")
                 self.assertEqual(shipment.destination_country, "GB")
+                self.assertEqual(shipment.normalized_status, "in_transit")
+                self.assertEqual(len(shipment.events), 1)
                 self.assertIsNotNone(shipment.order_summary)
                 self.assertEqual(shipment.order_summary.order_name, "LUK2806")
                 self.assertTrue(
@@ -272,7 +315,52 @@ class CoreTests(unittest.TestCase):
             finally:
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
                 services_module.storefront_client.lookup_by_tracking = original_lookup
+                services_module.storefront_client.fetch_tracking_detail = original_detail_lookup
                 services_module.shopify_admin_client.access_token = original_admin_token
+
+    def test_parse_track_info_supports_shopify_track_shipments_payload(self) -> None:
+        raw = {
+            "shipments": [
+                {
+                    "code": 200,
+                    "number": "4PX3002754801725CN",
+                    "carrier": 190094,
+                    "shipment": {
+                        "shipping_info": {
+                            "shipper_address": {"country": "CN"},
+                            "recipient_address": {"country": "GB"},
+                        },
+                        "latest_status": {"status": "InTransit"},
+                        "latest_event": {
+                            "time_utc": "2026-05-12T23:59:44Z",
+                            "description": "Depart from facility to service provider.",
+                            "location": "Nancheng",
+                        },
+                        "tracking": {
+                            "providers": [
+                                {
+                                    "provider": {"key": 190094, "name": "4PX"},
+                                    "events": [
+                                        {
+                                            "time_utc": "2026-05-12T23:59:44Z",
+                                            "description": "Depart from facility to service provider.",
+                                            "location": "Nancheng",
+                                            "stage": "InTransit",
+                                        }
+                                    ],
+                                }
+                            ]
+                        },
+                    },
+                }
+            ]
+        }
+        parsed = parse_track_info(raw, "4PX3002754801725CN")
+        self.assertEqual(parsed["carrier_code"], "190094")
+        self.assertEqual(parsed["carrier_name"], "4PX")
+        self.assertEqual(parsed["normalized_status"], "in_transit")
+        self.assertEqual(parsed["destination_country"], "GB")
+        self.assertEqual(len(parsed["events"]), 1)
 
     def test_store_order_match_without_carrier_accepts_specific_carrier_row(self) -> None:
         original_db_path = config_module.settings.database_path
