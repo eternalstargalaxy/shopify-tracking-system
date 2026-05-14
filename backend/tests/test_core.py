@@ -23,7 +23,12 @@ from backend.app.normalization import normalize_status, status_label
 from backend.app.seventeen_track import parse_track_info
 from backend.app import services as services_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
-from backend.app.services import parse_tracking_numbers, process_tracking_number, query_order_tracking
+from backend.app.services import (
+    is_valid_order_number,
+    parse_tracking_numbers,
+    process_tracking_number,
+    query_order_tracking,
+)
 
 
 @contextmanager
@@ -558,6 +563,13 @@ class CoreTests(unittest.TestCase):
     def test_parse_tracking_numbers(self) -> None:
         numbers = parse_tracking_numbers("YT2423821266000001 invalid RJ556381428CN YT2423821266000001")
         self.assertEqual(numbers, ["YT2423821266000001", "RJ556381428CN"])
+
+    def test_order_number_validation(self) -> None:
+        self.assertTrue(is_valid_order_number("LUK2806"))
+        self.assertTrue(is_valid_order_number("#1001"))
+        self.assertFalse(is_valid_order_number("2806"))
+        self.assertFalse(is_valid_order_number("LUK-2806"))
+        self.assertFalse(is_valid_order_number("ABC"))
 
     def test_normalize_known_main_status(self) -> None:
         self.assertEqual(normalize_status("Delivered", None, None), "delivered")

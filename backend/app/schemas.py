@@ -119,3 +119,22 @@ class InternalTrackRequest(BaseModel):
 class RecentShipmentsResponse(BaseModel):
     count: int
     shipments: list[TrackingShipment]
+
+
+class OpsEvent(BaseModel):
+    event: str
+    level: str
+    message: str | None = None
+    created_at: str = Field(alias="createdAt")
+    context: dict = {}
+
+    model_config = {"populate_by_name": True}
+
+
+class OpsSummaryResponse(BaseModel):
+    count_24h: int = Field(alias="count24h")
+    error_count_24h: int = Field(alias="errorCount24h")
+    warning_count_24h: int = Field(alias="warningCount24h")
+    recent_events: list[OpsEvent] = Field(alias="recentEvents")
+
+    model_config = {"populate_by_name": True}

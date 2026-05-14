@@ -101,6 +101,15 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 UNIQUE (shop_domain, tracking_number, carrier_code)
             );
+
+            CREATE TABLE IF NOT EXISTS system_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event TEXT NOT NULL,
+                level TEXT NOT NULL DEFAULT 'info',
+                message TEXT,
+                context_json TEXT NOT NULL DEFAULT '{{}}',
+                created_at TEXT NOT NULL
+            );
             """
         )
         _ensure_columns(conn)
@@ -410,5 +419,94 @@ def consume_rate_limit(bucket_type: str, bucket_key: str, window_start: int) -> 
             )
         conn.commit()
         return new_count
+    finally:
+        conn.close()
+
+
+def insert_system_event(
+    event: str,
+    level: str,
+    message: str | None,
+    context: dict[str, Any] | None = None,
+) -> None:
+    conn = get_connection()
+    now = _now_iso()
+    try:
+        conn.execute(
+            """
+            INSERT INTO system_events (event, level, message, context_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                event,
+                level,
+                message,
+                json.dumps(context or {}, ensure_ascii=True),
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def summarize_system_events(limit: int = 20) -> dict[str, Any]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT event, level, message, context_json, created_at
+            FROM system_events
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        count_24h = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM system_events
+            WHERE created_at >= datetime('now', '-1 day')
+            """
+        ).fetchone()["count"]
+        error_count_24h = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM system_events
+            WHERE created_at >= datetime('now', '-1 day')
+              AND level = 'error'
+            """
+        ).fetchone()["count"]
+        warning_count_24h = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM system_events
+            WHERE created_at >= datetime('now', '-1 day')
+              AND level = 'warning'
+            """
+        ).fetchone()["count"]
+
+        recent_events = []
+        for row in rows:
+            try:
+                context = json.loads(row["context_json"] or "{}")
+            except json.JSONDecodeError:
+                context = {}
+            recent_events.append(
+                {
+                    "event": row["event"],
+                    "level": row["level"],
+                    "message": row["message"],
+                    "createdAt": row["created_at"],
+                    "context": context,
+                }
+            )
+
+        return {
+            "count24h": int(count_24h),
+            "errorCount24h": int(error_count_24h),
+            "warningCount24h": int(warning_count_24h),
+            "recentEvents": recent_events,
+        }
     finally:
         conn.close()

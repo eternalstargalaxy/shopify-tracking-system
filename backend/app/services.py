@@ -22,6 +22,7 @@ from .seventeen_track_storefront import SeventeenTrackStorefrontClient, StoreOrd
 from .shopify_admin import ShopifyAdminClient, build_local_order_summary, merge_order_summaries
 
 TRACKING_PATTERN = re.compile(r"[A-Za-z0-9]{6,42}")
+ORDER_NUMBER_PATTERN = re.compile(r"^(?:[A-Z]{2,6}\d{3,8}|#\d{3,8})$")
 shopify_admin_client = ShopifyAdminClient()
 storefront_client = SeventeenTrackStorefrontClient()
 
@@ -40,6 +41,10 @@ def parse_tracking_numbers(raw_value: str) -> list[str]:
 
 def normalize_order_number(raw_value: str) -> str:
     return (raw_value or "").strip().upper()
+
+
+def is_valid_order_number(raw_value: str) -> bool:
+    return bool(ORDER_NUMBER_PATTERN.match(normalize_order_number(raw_value)))
 
 
 def record_is_fresh(record: dict | None, now: datetime | None = None) -> bool:
@@ -337,6 +342,14 @@ def query_order_tracking(
     shop_domain: str | None,
 ) -> tuple[list[TrackingShipment], list[QueryError]]:
     normalized_order_number = normalize_order_number(order_number)
+    if not is_valid_order_number(normalized_order_number):
+        return [], [
+            QueryError(
+                trackingNumber=normalized_order_number or order_number,
+                code="invalid_tracking_number",
+                message="That order number format is not valid. Please check it and try again.",
+            )
+        ]
     lookup = storefront_client.lookup_by_order(normalized_order_number, email, shop_domain)
     tracking_number = (lookup.tracking_params.get("num") if lookup else None) or None
     if not lookup or not tracking_number:

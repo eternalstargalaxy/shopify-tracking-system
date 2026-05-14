@@ -12,10 +12,10 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import ROOT_DIR, settings
 from .internal_auth import verify_internal_token
-from .db import init_db
+from .db import init_db, summarize_system_events
 from .observability import log_event, send_alert
 from .rate_limit import enforce_ip_limits
-from .schemas import InternalTrackRequest, RecentShipmentsResponse, TrackResponse
+from .schemas import InternalTrackRequest, OpsSummaryResponse, RecentShipmentsResponse, TrackResponse
 from .services import get_recent_shipments, parse_tracking_numbers, query_order_tracking, query_tracking_numbers
 from .seventeen_track import SeventeenTrackClient
 from .shopify_proxy import verify_proxy_request
@@ -189,3 +189,12 @@ def internal_recent(
     verify_internal_token(request)
     shipments = get_recent_shipments(limit)
     return RecentShipmentsResponse(count=len(shipments), shipments=shipments)
+
+
+@app.get("/internal/api/ops/summary", response_model=OpsSummaryResponse)
+def internal_ops_summary(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> OpsSummaryResponse:
+    verify_internal_token(request)
+    return OpsSummaryResponse(**summarize_system_events(limit))
