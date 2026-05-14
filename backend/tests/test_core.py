@@ -20,6 +20,7 @@ from backend.app.db import (
     upsert_tracking_record,
 )
 from backend.app.normalization import normalize_status, status_label
+from backend.app.observability import _build_alert_payload, _sign_feishu
 from backend.app.seventeen_track import parse_track_info
 from backend.app import services as services_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
@@ -44,6 +45,40 @@ def workspace_temp_dir():
 
 
 class CoreTests(unittest.TestCase):
+    def test_feishu_signature_generation(self) -> None:
+        self.assertEqual(
+            _sign_feishu("1710000000", "JvpXdHBvOh8gnz4dr1a52e"),
+            "JeqJtm5Pj0/7qMksTQwfnAE4c1iOA99vz9+yBRATU2o=",
+        )
+
+    def test_build_alert_payload_for_feishu(self) -> None:
+        original_url = config_module.settings.alert_webhook_url
+        original_secret = config_module.settings.alert_webhook_secret
+        try:
+            object.__setattr__(
+                config_module.settings,
+                "alert_webhook_url",
+                "https://open.feishu.cn/open-apis/bot/v2/hook/demo",
+            )
+            object.__setattr__(
+                config_module.settings,
+                "alert_webhook_secret",
+                "demo-secret",
+            )
+            payload = _build_alert_payload(
+                "storefront_tracking_failed",
+                "error",
+                "17TRACK storefront tracking detail lookup failed.",
+                {"tracking_number": "4PX3002735874120CN"},
+            )
+            self.assertEqual(payload["msg_type"], "text")
+            self.assertIn("tracking-alert", payload["content"]["text"])
+            self.assertIn("timestamp", payload)
+            self.assertIn("sign", payload)
+        finally:
+            object.__setattr__(config_module.settings, "alert_webhook_url", original_url)
+            object.__setattr__(config_module.settings, "alert_webhook_secret", original_secret)
+
     def test_fetch_tracking_record_without_carrier_uses_detected_carrier(self) -> None:
         original_db_path = config_module.settings.database_path
         with workspace_temp_dir() as temp_dir:

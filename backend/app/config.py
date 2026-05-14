@@ -61,6 +61,7 @@ class Settings:
     mock_when_api_key_missing: bool = os.getenv("MOCK_WHEN_API_KEY_MISSING", "true").lower() == "true"
     internal_dashboard_token: str = os.getenv("INTERNAL_DASHBOARD_TOKEN", "")
     alert_webhook_url: str = os.getenv("ALERT_WEBHOOK_URL", "")
+    alert_webhook_secret: str = os.getenv("ALERT_WEBHOOK_SECRET", "")
     alert_min_interval_seconds: int = int(os.getenv("ALERT_MIN_INTERVAL_SECONDS", "900"))
 
 

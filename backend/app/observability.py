@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -28,6 +32,48 @@ def log_event(event: str, *, level: str = "info", message: str | None = None, **
     insert_system_event(event, level, message, fields)
 
 
+def _is_feishu_webhook(url: str) -> bool:
+    hostname = (urlparse(url).hostname or "").lower()
+    return hostname.endswith("feishu.cn") or hostname.endswith("larksuite.com")
+
+
+def _sign_feishu(timestamp: str, secret: str) -> str:
+    payload = f"{timestamp}\n{secret}".encode("utf-8")
+    digest = hmac.new(payload, digestmod=hashlib.sha256).digest()
+    return base64.b64encode(digest).decode("utf-8")
+
+
+def _build_alert_payload(event: str, level: str, message: str, fields: dict[str, Any]) -> dict[str, Any]:
+    timestamp = str(int(time.time()))
+    if _is_feishu_webhook(settings.alert_webhook_url):
+        lines = [
+            f"[tracking-alert] {event}",
+            f"Level: {level}",
+            f"Message: {message}",
+        ]
+        if fields:
+            lines.append("Context:")
+            for key, value in fields.items():
+                lines.append(f"- {key}: {value}")
+        payload = {
+            "msg_type": "text",
+            "content": {"text": "\n".join(lines)},
+        }
+        if settings.alert_webhook_secret:
+            payload["timestamp"] = timestamp
+            payload["sign"] = _sign_feishu(timestamp, settings.alert_webhook_secret)
+        return payload
+
+    return {
+        "text": f"[tracking-alert] {event}: {message}",
+        "event": event,
+        "level": level,
+        "message": message,
+        "context": fields,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def send_alert(event: str, message: str, *, level: str = "error", **fields: Any) -> None:
     if not settings.alert_webhook_url:
         return
@@ -40,14 +86,7 @@ def send_alert(event: str, message: str, *, level: str = "error", **fields: Any)
     if count > 1:
         return
 
-    payload = {
-        "text": f"[tracking-alert] {event}: {message}",
-        "event": event,
-        "level": level,
-        "message": message,
-        "context": fields,
-        "ts": datetime.now(timezone.utc).isoformat(),
-    }
+    payload = _build_alert_payload(event, level, message, fields)
     request = Request(
         url=settings.alert_webhook_url,
         data=json.dumps(payload).encode("utf-8"),
