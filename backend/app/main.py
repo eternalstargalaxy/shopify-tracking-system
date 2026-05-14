@@ -13,7 +13,7 @@ from .internal_auth import verify_internal_token
 from .db import init_db
 from .rate_limit import enforce_ip_limits
 from .schemas import InternalTrackRequest, RecentShipmentsResponse, TrackResponse
-from .services import get_recent_shipments, parse_tracking_numbers, query_tracking_numbers
+from .services import get_recent_shipments, parse_tracking_numbers, query_order_tracking, query_tracking_numbers
 from .seventeen_track import SeventeenTrackClient
 from .shopify_proxy import verify_proxy_request
 
@@ -59,6 +59,34 @@ def track(
         success=not errors,
         ok=not errors,
         queryCount=len(tracking_numbers),
+        shopDomain=shop_domain,
+        generatedAt=datetime.now(timezone.utc),
+        shipments=shipments,
+        errors=errors,
+    )
+
+
+@app.get("/api/order-track", response_model=TrackResponse)
+def track_by_order(
+    request: Request,
+    order_no: str = Query(..., description="Store order number."),
+    email: str = Query(..., description="Order email address."),
+) -> TrackResponse:
+    shop_domain = verify_proxy_request(request)
+    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+    enforce_ip_limits(client_ip)
+
+    shipments, errors = query_order_tracking(
+        client,
+        order_no,
+        email,
+        shop_domain,
+    )
+
+    return TrackResponse(
+        success=not errors,
+        ok=not errors,
+        queryCount=1,
         shopDomain=shop_domain,
         generatedAt=datetime.now(timezone.utc),
         shipments=shipments,

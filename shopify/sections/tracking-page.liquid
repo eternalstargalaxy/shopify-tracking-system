@@ -19,7 +19,12 @@
           <p class="tracking-copy">Enter your tracking number to view the latest shipping progress.</p>
         </div>
 
-        <label class="tracking-field">
+        <div class="tracking-mode-switch" role="tablist" aria-label="Tracking lookup type">
+          <button type="button" class="tracking-mode-button is-active" data-mode="tracking" aria-selected="true">Tracking Number</button>
+          <button type="button" class="tracking-mode-button" data-mode="order" aria-selected="false">Order Number</button>
+        </div>
+
+        <label class="tracking-field" data-mode-panel="tracking">
           <span>Tracking number</span>
           <input
             id="trackingNumbers"
@@ -31,6 +36,33 @@
             autocomplete="off"
           >
         </label>
+
+        <div class="tracking-order-fields" data-mode-panel="order" hidden>
+          <label class="tracking-field">
+            <span>Order number</span>
+            <input
+              id="orderNumber"
+              name="orderNumber"
+              spellcheck="false"
+              placeholder="Enter your order number"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+            >
+          </label>
+
+          <label class="tracking-field">
+            <span>Email address</span>
+            <input
+              id="orderEmail"
+              name="orderEmail"
+              placeholder="Enter the email used on your order"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+            >
+          </label>
+        </div>
 
         <div class="tracking-actions">
           <button type="submit" id="trackBtn" class="tracking-button">Track parcel</button>
@@ -113,12 +145,12 @@
     <section class="info-panel order-summary-panel" hidden>
       <div class="panel-heading">
         <h2>Order Information</h2>
-      </div>
-      <div class="order-summary" hidden>
-        <div class="order-name-block">
+        <p class="order-panel-order" hidden>
           <span>Order</span>
           <strong class="order-name"></strong>
-        </div>
+        </p>
+      </div>
+      <div class="order-summary" hidden>
         <div class="order-placed-block">
           <span>Placed</span>
           <strong class="order-placed-at"></strong>

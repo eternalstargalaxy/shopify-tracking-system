@@ -1,10 +1,14 @@
 ﻿(function () {
   const config = window.TRACKING_CONFIG || {};
   const apiEndpoint = config.apiEndpoint || "/apps/track/api/track";
+  const orderApiEndpoint = apiEndpoint.replace(/\/api\/track$/, "/api/order-track");
 
   const form = document.querySelector("#trackingForm");
   const textarea = document.querySelector("#trackingNumbers");
-  const carrierSelect = document.querySelector("#carrierSelect");
+  const orderNumberInput = document.querySelector("#orderNumber");
+  const orderEmailInput = document.querySelector("#orderEmail");
+  const modeButtons = Array.from(document.querySelectorAll(".tracking-mode-button"));
+  const modePanels = Array.from(document.querySelectorAll("[data-mode-panel]"));
   const message = document.querySelector("#formMessage");
   const resultsList = document.querySelector("#resultsList");
   const emptyState = document.querySelector("#emptyState");
@@ -63,10 +67,23 @@
   });
   let cooldownTimer = null;
   let cooldownRemaining = 0;
+  let queryMode = "tracking";
 
   function setMessage(text, isError) {
     message.textContent = text || "";
     message.classList.toggle("is-error", Boolean(isError));
+  }
+
+  function setQueryMode(nextMode) {
+    queryMode = nextMode === "order" ? "order" : "tracking";
+    modeButtons.forEach((button) => {
+      const isActive = button.dataset.mode === queryMode;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    modePanels.forEach((panel) => {
+      panel.hidden = panel.dataset.modePanel !== queryMode;
+    });
   }
 
   function parseTrackingNumbers(value) {
@@ -243,10 +260,12 @@
   function renderOrderSummary(node, orderSummary) {
     const container = node.querySelector(".order-summary");
     const panel = node.querySelector(".order-summary-panel");
+    const orderPanelOrder = node.querySelector(".order-panel-order");
     if (!container) return;
     if (!orderSummary || (!orderSummary.orderName && !orderSummary.placedAt && !orderSummary.fulfillmentStatus && !(orderSummary.items || []).length)) {
       container.hidden = true;
       if (panel) panel.hidden = true;
+      if (orderPanelOrder) orderPanelOrder.hidden = true;
       return;
     }
 
@@ -255,14 +274,13 @@
     const fulfilment = normalizeDisplayText(orderSummary.fulfillmentStatus);
     const items = Array.isArray(orderSummary.items) ? orderSummary.items : [];
 
-    const orderNameBlock = node.querySelector(".order-name-block");
     const orderPlacedBlock = node.querySelector(".order-placed-block");
     const orderFulfilmentBlock = node.querySelector(".order-fulfilment-block");
     const orderItemsBlock = node.querySelector(".order-items-block");
     node.querySelector(".order-name").textContent = orderName || "";
     node.querySelector(".order-placed-at").textContent = placedAt || "";
     node.querySelector(".order-fulfilment-status").textContent = fulfilment || "";
-    orderNameBlock.hidden = !orderName;
+    if (orderPanelOrder) orderPanelOrder.hidden = !orderName;
     orderPlacedBlock.hidden = !placedAt;
     orderFulfilmentBlock.hidden = !fulfilment;
 
@@ -294,7 +312,7 @@
     });
     orderItemsBlock.hidden = !items.length;
 
-    container.hidden = orderNameBlock.hidden
+    container.hidden = (!orderPanelOrder || orderPanelOrder.hidden)
       && orderPlacedBlock.hidden
       && orderFulfilmentBlock.hidden
       && orderItemsBlock.hidden;
@@ -437,7 +455,6 @@
   async function queryTracking(numbers) {
     const params = new URLSearchParams();
     params.set("nums", numbers.join(","));
-    if (carrierSelect && carrierSelect.value) params.set("carrier", carrierSelect.value);
 
     const response = await fetch(`${apiEndpoint}?${params.toString()}`, {
       headers: { Accept: "application/json" }
@@ -448,18 +465,54 @@
     return response.json();
   }
 
-  async function submitQuery() {
-    const numbers = parseTrackingNumbers(textarea.value);
-    if (!numbers.length) {
-      setMessage("Please enter at least one valid tracking number.", true);
-      return;
-    }
+  async function queryOrder(orderNumber, email) {
+    const params = new URLSearchParams();
+    params.set("order_no", orderNumber);
+    params.set("email", email);
 
+    const response = await fetch(`${orderApiEndpoint}?${params.toString()}`, {
+      headers: { Accept: "application/json" }
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed with ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async function submitQuery() {
     trackButton.disabled = true;
-    setMessage(`Tracking ${numbers.length} shipment${numbers.length > 1 ? "s" : ""}...`);
 
     try {
-      const data = await queryTracking(numbers);
+      let data;
+      if (queryMode === "order") {
+        const orderNumber = (orderNumberInput && orderNumberInput.value || "").trim().toUpperCase();
+        const email = (orderEmailInput && orderEmailInput.value || "").trim();
+        if (!orderNumber) {
+          setMessage("Please enter your order number.", true);
+          trackButton.disabled = false;
+          setTrackButtonLabel();
+          return;
+        }
+        if (!email) {
+          setMessage("Please enter the email address used on your order.", true);
+          trackButton.disabled = false;
+          setTrackButtonLabel();
+          return;
+        }
+        setMessage(`Looking up order ${orderNumber}...`);
+        data = await queryOrder(orderNumber, email);
+      } else {
+        const numbers = parseTrackingNumbers(textarea.value);
+        if (!numbers.length) {
+          setMessage("Please enter a valid tracking number.", true);
+          trackButton.disabled = false;
+          setTrackButtonLabel();
+          return;
+        }
+        setMessage(`Tracking ${numbers.length} shipment${numbers.length > 1 ? "s" : ""}...`);
+        data = await queryTracking(numbers);
+      }
+
       renderShipments(data.shipments || []);
       if (data.success === false && !(data.shipments || []).length) {
         setMessage((data.errors && data.errors[0] && data.errors[0].message) || "No shipment data was returned.", true);
@@ -485,10 +538,25 @@
     });
   }
 
+  modeButtons.forEach((button) => {
+    button.addEventListener("click", function () {
+      setQueryMode(button.dataset.mode);
+      setMessage("");
+    });
+  });
+
   const url = new URL(window.location.href);
   const nums = url.searchParams.get("nums");
+  const orderNo = url.searchParams.get("order_no");
+  const email = url.searchParams.get("email");
+  setQueryMode("tracking");
   if (nums && textarea) {
     textarea.value = nums;
+    submitQuery();
+  } else if (orderNo && email && orderNumberInput && orderEmailInput) {
+    setQueryMode("order");
+    orderNumberInput.value = orderNo;
+    orderEmailInput.value = email;
     submitQuery();
   }
 

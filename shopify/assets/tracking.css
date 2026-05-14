@@ -56,6 +56,30 @@
   gap: 18px;
 }
 
+.tracking-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tracking-mode-button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tracking-mode-button.is-active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
 .tracking-intro {
   text-align: center;
 }
@@ -70,6 +94,11 @@
 .tracking-field {
   display: grid;
   gap: 10px;
+}
+
+.tracking-order-fields {
+  display: grid;
+  gap: 14px;
 }
 
 .tracking-field > span,
@@ -101,10 +130,10 @@
 .tracking-button {
   width: 100%;
   min-height: 50px;
-  border: 1px solid #000;
+  border: 1px solid #7C5D3E;
   border-radius: 0;
   color: #fff;
-  background: #000;
+  background: #7C5D3E;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -182,6 +211,19 @@
   font-weight: 600;
 }
 
+.order-panel-order {
+  margin: 8px 0 0;
+}
+
+.order-panel-order strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .shipment-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -249,7 +291,7 @@
 }
 
 .order-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .shipment-meta > div,

@@ -22,7 +22,8 @@ from backend.app.db import (
 from backend.app.normalization import normalize_status, status_label
 from backend.app.seventeen_track import parse_track_info
 from backend.app import services as services_module
-from backend.app.services import parse_tracking_numbers, process_tracking_number
+from backend.app.schemas import OrderSummary, OrderSummaryItem
+from backend.app.services import parse_tracking_numbers, process_tracking_number, query_order_tracking
 
 
 @contextmanager
@@ -361,6 +362,113 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(parsed["normalized_status"], "in_transit")
         self.assertEqual(parsed["destination_country"], "GB")
         self.assertEqual(len(parsed["events"]), 1)
+
+    def test_query_order_tracking_uses_storefront_order_lookup(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "190094",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        class FakeStorefrontLookup:
+            order_name = "LUK2806"
+            carrier_code = "190094"
+            carrier_name = "4PX"
+            destination_country = "GB"
+            last_mile_tracking_number = "JJD0002234523168744"
+            tracking_params = {"fc": 190094, "g": "demo-guid", "num": "4PX3002754801725CN", "sc": 0, "params": {}}
+            order_summary = OrderSummary(
+                orderName="LUK2806",
+                items=[
+                    OrderSummaryItem(
+                        title="100% Linen Sleeveless Dress SIENNA",
+                        quantity=1,
+                        imageUrl="https://example.com/item.jpg",
+                        unitPrice="81.90 GBP",
+                    )
+                ],
+                source="17track_shopify",
+            )
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_detail_lookup = services_module.storefront_client.fetch_tracking_detail
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                services_module.storefront_client.lookup_by_order = lambda *_args, **_kwargs: FakeStorefrontLookup()
+                services_module.storefront_client.fetch_tracking_detail = (
+                    lambda *_args, **_kwargs: {
+                        "shipments": [
+                            {
+                                "code": 200,
+                                "number": "4PX3002754801725CN",
+                                "carrier": 190094,
+                                "shipment": {
+                                    "shipping_info": {
+                                        "shipper_address": {"country": "CN"},
+                                        "recipient_address": {"country": "GB"},
+                                    },
+                                    "latest_status": {"status": "InTransit"},
+                                    "latest_event": {
+                                        "time_utc": "2026-05-12T23:59:44Z",
+                                        "description": "Depart from facility to service provider.",
+                                        "location": "Nancheng",
+                                    },
+                                    "tracking": {
+                                        "providers": [
+                                            {
+                                                "provider": {"key": 190094, "name": "4PX"},
+                                                "events": [
+                                                    {
+                                                        "time_utc": "2026-05-12T23:59:44Z",
+                                                        "description": "Depart from facility to service provider.",
+                                                        "location": "Nancheng",
+                                                        "stage": "InTransit",
+                                                    }
+                                                ],
+                                            }
+                                        ]
+                                    },
+                                },
+                            }
+                        ]
+                    }
+                )
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LUK2806",
+                    "doyle.sj@outlook.com",
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual(len(shipments), 1)
+                self.assertEqual(shipments[0].tracking_number, "4PX3002754801725CN")
+                self.assertEqual(shipments[0].carrier_name, "4PX")
+                self.assertEqual(shipments[0].last_mile_tracking_number, "JJD0002234523168744")
+                self.assertIsNotNone(shipments[0].order_summary)
+                self.assertEqual(shipments[0].order_summary.order_name, "LUK2806")
+                self.assertEqual(len(shipments[0].order_summary.items), 1)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
+                services_module.storefront_client.fetch_tracking_detail = original_detail_lookup
 
     def test_store_order_match_without_carrier_accepts_specific_carrier_row(self) -> None:
         original_db_path = config_module.settings.database_path

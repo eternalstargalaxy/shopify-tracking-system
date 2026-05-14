@@ -37,6 +37,10 @@ def parse_tracking_numbers(raw_value: str) -> list[str]:
     return deduped[:40]
 
 
+def normalize_order_number(raw_value: str) -> str:
+    return (raw_value or "").strip().upper()
+
+
 def record_is_fresh(record: dict | None, now: datetime | None = None) -> bool:
     if not record or not record["cache_expires_at"]:
         return False
@@ -157,9 +161,10 @@ def process_tracking_number(
     shop_domain: str | None,
     *,
     enforce_order_match: bool | None = None,
+    storefront_lookup_override: StoreOrderLookup | None = None,
 ) -> tuple[TrackingShipment | None, QueryError | None]:
     record = fetch_tracking_record(tracking_number, carrier_code)
-    storefront_lookup = storefront_client.lookup_by_tracking(tracking_number, shop_domain)
+    storefront_lookup = storefront_lookup_override or storefront_client.lookup_by_tracking(tracking_number, shop_domain)
     resolved_carrier_code = (
         carrier_code
         or (storefront_lookup.carrier_code if storefront_lookup else None)
@@ -291,6 +296,37 @@ def process_tracking_number(
         events=parsed["events"],
     )
     return shipment, None
+
+
+def query_order_tracking(
+    client: SeventeenTrackClient,
+    order_number: str,
+    email: str,
+    shop_domain: str | None,
+) -> tuple[list[TrackingShipment], list[QueryError]]:
+    normalized_order_number = normalize_order_number(order_number)
+    lookup = storefront_client.lookup_by_order(normalized_order_number, email, shop_domain)
+    tracking_number = (lookup.tracking_params.get("num") if lookup else None) or None
+    if not lookup or not tracking_number:
+        return [], [
+            QueryError(
+                trackingNumber=normalized_order_number or order_number,
+                code="not_store_order",
+                message="We couldn't find an order matching that order number and email address.",
+            )
+        ]
+
+    shipment, error = process_tracking_number(
+        client,
+        tracking_number,
+        lookup.carrier_code,
+        shop_domain,
+        enforce_order_match=False,
+        storefront_lookup_override=lookup,
+    )
+    shipments = [shipment] if shipment else []
+    errors = [error] if error else []
+    return shipments, errors
 
 
 def upsert_tracking_order_mapping(
