@@ -32,6 +32,10 @@ def log_event(event: str, *, level: str = "info", message: str | None = None, **
     insert_system_event(event, level, message, fields)
 
 
+def _utc_now_text() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
 def _is_feishu_webhook(url: str) -> bool:
     hostname = (urlparse(url).hostname or "").lower()
     return hostname.endswith("feishu.cn") or hostname.endswith("larksuite.com")
@@ -47,8 +51,8 @@ def _build_alert_payload(event: str, level: str, message: str, fields: dict[str,
     timestamp = str(int(time.time()))
     if _is_feishu_webhook(settings.alert_webhook_url):
         lines = [
-            f"[tracking-alert] {event}",
-            f"Level: {level}",
+            f"[tracking-alert] [{settings.app_name}] [{level.upper()}] {event}",
+            f"Time: {_utc_now_text()}",
             f"Message: {message}",
         ]
         if fields:

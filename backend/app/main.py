@@ -38,6 +38,7 @@ async def request_logging_middleware(request: Request, call_next):
     request.state.request_id = request_id
     start = perf_counter()
     response = None
+    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
     try:
         response = await call_next(request)
         return response
@@ -49,6 +50,7 @@ async def request_logging_middleware(request: Request, call_next):
             method=request.method,
             path=request.url.path,
             query=request.url.query,
+            client_ip=client_ip,
             duration_ms=duration_ms,
             error_type=type(exc).__name__,
             error=str(exc),
@@ -59,6 +61,7 @@ async def request_logging_middleware(request: Request, call_next):
             request_id=request_id,
             path=request.url.path,
             query=request.url.query,
+            client_ip=client_ip,
             error=str(exc),
         )
         raise
@@ -71,6 +74,7 @@ async def request_logging_middleware(request: Request, call_next):
                 method=request.method,
                 path=request.url.path,
                 query=request.url.query,
+                client_ip=client_ip,
                 status_code=response.status_code,
                 duration_ms=duration_ms,
             )
@@ -81,6 +85,7 @@ async def request_logging_middleware(request: Request, call_next):
                     request_id=request_id,
                     path=request.url.path,
                     query=request.url.query,
+                    client_ip=client_ip,
                     status_code=response.status_code,
                 )
 
@@ -102,6 +107,14 @@ def track(
 
     tracking_numbers = parse_tracking_numbers(nums)
     if not tracking_numbers:
+        log_event(
+            "tracking_input_invalid",
+            level="warning",
+            message="No valid tracking numbers were provided.",
+            client_ip=client_ip,
+            shop_domain=shop_domain,
+            raw_nums=nums,
+        )
         raise HTTPException(status_code=400, detail="No valid tracking numbers were provided.")
 
     shipments, errors = query_tracking_numbers(
@@ -161,6 +174,12 @@ def internal_track(request: Request, payload: InternalTrackRequest) -> TrackResp
     verify_internal_token(request)
     tracking_numbers = parse_tracking_numbers(payload.nums)
     if not tracking_numbers:
+        log_event(
+            "internal_tracking_input_invalid",
+            level="warning",
+            message="No valid tracking numbers were provided to the internal console.",
+            raw_nums=payload.nums,
+        )
         raise HTTPException(status_code=400, detail="No valid tracking numbers were provided.")
 
     shipments, errors = query_tracking_numbers(

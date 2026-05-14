@@ -10,6 +10,7 @@
 - 批量查询：支持一行一个、空格分隔或整段文本自动提取物流单号
 - 接口入口：`POST /internal/api/track`
 - 最近查询：`GET /internal/api/recent`
+- 运维摘要：`GET /internal/api/ops/summary`
 - 查询结果缓存：复用 `tracking_records` 表
 - CSV 导出：在浏览器端导出本次查询结果
 
@@ -27,6 +28,7 @@
 - 运营批量检查多个物流单号
 - 用缓存加速重复查询
 - 导出当前查询结果给同事继续处理
+- 人工巡检最近 24 小时错误、warning 和上游失败情况
 
 ## 下一步建议
 

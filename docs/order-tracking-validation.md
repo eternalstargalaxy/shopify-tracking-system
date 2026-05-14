@@ -4,7 +4,20 @@
 
 新版方案强调：真正需要拦住的是“非本店订单的物流单号”进入 17TRACK 注册流程。
 
-因此后端新增 `order_tracking_numbers` 表，用来保存本店订单对应的物流单号。开启强校验后，只有命中这张表的单号才允许继续走 17TRACK `/register` 和 `/gettrackinfo`。
+因此后端新增 `order_tracking_numbers` 表，用来保存本店订单对应的物流单号。开启强校验后，只有命中本店订单识别逻辑的单号才允许继续走 17TRACK `/register` 和 `/gettrackinfo`。
+
+当前实际实现是“双来源识别”：
+
+1. 先查本地 `order_tracking_numbers`
+2. 如果命不中，再尝试走 17TRACK Shopify 店铺接口补充 `tracking -> order_name` 映射，并反写回本地表
+
+因此当前线上默认：
+
+```env
+REQUIRE_ORDER_TRACKING_MATCH=true
+```
+
+如果既不在本地映射里，也不能从店铺接口识别为本店订单，系统会直接返回 `not_store_order`，不会继续打 17TRACK 公共 API。
 
 ## 配置项
 
@@ -12,7 +25,7 @@
 REQUIRE_ORDER_TRACKING_MATCH=true
 ```
 
-本地开发可以保持：
+本地开发可以临时关闭：
 
 ```env
 REQUIRE_ORDER_TRACKING_MATCH=false

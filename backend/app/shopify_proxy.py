@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl
 from fastapi import HTTPException, Request
 
 from .config import settings
+from .observability import log_event
 
 
 def _build_message(query_string: str) -> tuple[str, str | None]:
@@ -33,11 +34,24 @@ def verify_proxy_request(request: Request) -> str | None:
         return request.query_params.get("shop")
 
     if not settings.shopify_app_secret:
+        log_event(
+            "proxy_config_missing_secret",
+            level="error",
+            message="SHOPIFY_APP_SECRET is missing while proxy signature verification is enabled.",
+            path=request.url.path,
+        )
         raise HTTPException(status_code=500, detail="Missing SHOPIFY_APP_SECRET configuration.")
 
     raw_query = request.url.query
     message, signature = _build_message(raw_query)
     if not signature:
+        log_event(
+            "proxy_signature_missing",
+            level="warning",
+            message="Missing Shopify app proxy signature.",
+            path=request.url.path,
+            query=raw_query,
+        )
         raise HTTPException(status_code=401, detail="Missing Shopify app proxy signature.")
 
     computed = hmac.new(
@@ -46,6 +60,13 @@ def verify_proxy_request(request: Request) -> str | None:
         hashlib.sha256,
     ).hexdigest()
     if not hmac.compare_digest(computed, signature):
+        log_event(
+            "proxy_signature_invalid",
+            level="warning",
+            message="Invalid Shopify app proxy signature.",
+            path=request.url.path,
+            query=raw_query,
+        )
         raise HTTPException(status_code=401, detail="Invalid Shopify app proxy signature.")
 
     timestamp = request.query_params.get("timestamp")
@@ -53,12 +74,37 @@ def verify_proxy_request(request: Request) -> str | None:
         try:
             age = abs(int(time.time()) - int(timestamp))
         except ValueError as exc:
+            log_event(
+                "proxy_timestamp_invalid",
+                level="warning",
+                message="Invalid Shopify proxy timestamp.",
+                path=request.url.path,
+                query=raw_query,
+                timestamp=timestamp,
+            )
             raise HTTPException(status_code=401, detail="Invalid Shopify proxy timestamp.") from exc
         if age > settings.hmac_max_age_seconds:
+            log_event(
+                "proxy_timestamp_expired",
+                level="warning",
+                message="Expired Shopify proxy timestamp.",
+                path=request.url.path,
+                query=raw_query,
+                timestamp=timestamp,
+                max_age_seconds=settings.hmac_max_age_seconds,
+            )
             raise HTTPException(status_code=401, detail="Expired Shopify proxy timestamp.")
 
     shop_domain = request.query_params.get("shop")
     if settings.allowed_shop_domains and shop_domain not in settings.allowed_shop_domains:
+        log_event(
+            "proxy_shop_not_allowed",
+            level="warning",
+            message="Shop domain is not allowed.",
+            path=request.url.path,
+            shop_domain=shop_domain,
+            allowed_shop_domains=settings.allowed_shop_domains,
+        )
         raise HTTPException(status_code=403, detail="Shop domain is not allowed.")
 
     return shop_domain
