@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from .config import settings
 from .normalization import normalize_status
+from .observability import log_event, send_alert
 
 
 def _optional_text(value) -> str | None:
@@ -59,8 +60,22 @@ class SeventeenTrackClient:
             with urlopen(request, timeout=20) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
+            log_event("seventeen_track_http_error", path=path, status_code=exc.code)
+            send_alert(
+                "seventeen_track_http_error",
+                f"17TRACK API returned HTTP {exc.code}.",
+                path=path,
+                status_code=exc.code,
+            )
             raise HTTPException(status_code=502, detail=f"17TRACK HTTP error: {exc.code}") from exc
         except URLError as exc:
+            log_event("seventeen_track_network_error", path=path, reason=str(exc.reason))
+            send_alert(
+                "seventeen_track_network_error",
+                "17TRACK API network error.",
+                path=path,
+                reason=str(exc.reason),
+            )
             raise HTTPException(status_code=502, detail="17TRACK network error.") from exc
 
     def _mock_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:

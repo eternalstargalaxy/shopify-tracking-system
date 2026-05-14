@@ -14,6 +14,7 @@ from .db import (
     upsert_tracking_record,
 )
 from .normalization import compute_cache_expiry, status_label, support_notice
+from .observability import log_event, send_alert
 from .rate_limit import enforce_tracking_refresh_limit
 from .schemas import QueryError, TrackingShipment
 from .seventeen_track import SeventeenTrackClient, parse_track_info
@@ -124,6 +125,13 @@ def query_tracking_numbers(
                 errors.append(error)
         except Exception as exc:
             message = str(getattr(exc, "detail", exc)) or "Unknown query error."
+            log_event(
+                "tracking_query_error",
+                tracking_number=tracking_number,
+                carrier_code=carrier_code,
+                shop_domain=shop_domain,
+                error=message,
+            )
             errors.append(
                 QueryError(
                     trackingNumber=tracking_number,
@@ -200,6 +208,12 @@ def process_tracking_number(
         record = None
 
     if should_enforce_order_match and not store_match:
+        log_event(
+            "tracking_not_store_order",
+            tracking_number=tracking_number,
+            carrier_code=carrier_code,
+            shop_domain=shop_domain,
+        )
         return None, QueryError(
             trackingNumber=tracking_number,
             code="not_store_order",
@@ -248,6 +262,15 @@ def process_tracking_number(
             if _result_score(retry_parsed) > _result_score(parsed):
                 parsed = retry_parsed
 
+    if parsed.get("normalized_status") in {"unknown", "not_found"} and not parsed.get("events"):
+        log_event(
+            "tracking_no_updates",
+            tracking_number=tracking_number,
+            carrier_code=parsed.get("carrier_code") or resolved_carrier_code,
+            shop_domain=shop_domain,
+            source="storefront" if storefront_lookup else "public_api",
+        )
+
     if storefront_lookup:
         if not parsed.get("carrier_code") and storefront_lookup.carrier_code:
             parsed["carrier_code"] = storefront_lookup.carrier_code
@@ -295,6 +318,15 @@ def process_tracking_number(
         ),
         events=parsed["events"],
     )
+    log_event(
+        "tracking_query_success",
+        tracking_number=shipment.tracking_number,
+        carrier_code=shipment.carrier_code,
+        normalized_status=shipment.normalized_status,
+        cached=shipment.cached,
+        event_count=len(shipment.events),
+        order_name=shipment.order_summary.order_name if shipment.order_summary else None,
+    )
     return shipment, None
 
 
@@ -308,6 +340,12 @@ def query_order_tracking(
     lookup = storefront_client.lookup_by_order(normalized_order_number, email, shop_domain)
     tracking_number = (lookup.tracking_params.get("num") if lookup else None) or None
     if not lookup or not tracking_number:
+        log_event(
+            "order_lookup_not_found",
+            order_number=normalized_order_number,
+            email=email,
+            shop_domain=shop_domain,
+        )
         return [], [
             QueryError(
                 trackingNumber=normalized_order_number or order_number,
@@ -326,6 +364,15 @@ def query_order_tracking(
     )
     shipments = [shipment] if shipment else []
     errors = [error] if error else []
+    if errors:
+        send_alert(
+            "order_lookup_failed",
+            f"Order lookup failed for {normalized_order_number}",
+            order_number=normalized_order_number,
+            email=email,
+            shop_domain=shop_domain,
+            errors=[item.message for item in errors],
+        )
     return shipments, errors
 
 

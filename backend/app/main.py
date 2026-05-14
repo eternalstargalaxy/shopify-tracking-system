@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -11,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import ROOT_DIR, settings
 from .internal_auth import verify_internal_token
 from .db import init_db
+from .observability import log_event, send_alert
 from .rate_limit import enforce_ip_limits
 from .schemas import InternalTrackRequest, RecentShipmentsResponse, TrackResponse
 from .services import get_recent_shipments, parse_tracking_numbers, query_order_tracking, query_tracking_numbers
@@ -27,6 +30,59 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 client = SeventeenTrackClient()
 STATIC_DIR = ROOT_DIR / "backend" / "app" / "static"
 app.mount("/internal/static", StaticFiles(directory=STATIC_DIR / "internal"), name="internal_static")
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = uuid4().hex[:12]
+    request.state.request_id = request_id
+    start = perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as exc:
+        duration_ms = round((perf_counter() - start) * 1000, 2)
+        log_event(
+            "request_exception",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            query=request.url.query,
+            duration_ms=duration_ms,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        send_alert(
+            "request_exception",
+            f"{request.method} {request.url.path} raised {type(exc).__name__}",
+            request_id=request_id,
+            path=request.url.path,
+            query=request.url.query,
+            error=str(exc),
+        )
+        raise
+    finally:
+        if response is not None:
+            duration_ms = round((perf_counter() - start) * 1000, 2)
+            log_event(
+                "request_complete",
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                query=request.url.query,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+            if response.status_code >= 500:
+                send_alert(
+                    "request_5xx",
+                    f"{request.method} {request.url.path} returned {response.status_code}",
+                    request_id=request_id,
+                    path=request.url.path,
+                    query=request.url.query,
+                    status_code=response.status_code,
+                )
 
 
 @app.get("/health")

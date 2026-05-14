@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .config import settings
+from .observability import log_event, send_alert
 from .schemas import OrderSummary, OrderSummaryItem
 
 
@@ -149,7 +150,22 @@ class SeventeenTrackStorefrontClient:
         try:
             with urlopen(request, timeout=15) as response:
                 return json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            log_event(
+                "storefront_lookup_failed",
+                tracking_number=tracking_number,
+                order_number=order_number,
+                shop_domain=shop_domain,
+                error_type=type(exc).__name__,
+            )
+            send_alert(
+                "storefront_lookup_failed",
+                "17TRACK storefront summary lookup failed.",
+                tracking_number=tracking_number,
+                order_number=order_number,
+                shop_domain=shop_domain,
+                error_type=type(exc).__name__,
+            )
             return {}
 
     def _post_tracking(
@@ -182,7 +198,20 @@ class SeventeenTrackStorefrontClient:
         try:
             with urlopen(request, timeout=20) as response:
                 return json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            log_event(
+                "storefront_tracking_failed",
+                tracking_number=tracking_number,
+                shop_domain=shop_domain,
+                error_type=type(exc).__name__,
+            )
+            send_alert(
+                "storefront_tracking_failed",
+                "17TRACK storefront tracking detail lookup failed.",
+                tracking_number=tracking_number,
+                shop_domain=shop_domain,
+                error_type=type(exc).__name__,
+            )
             return {}
 
 

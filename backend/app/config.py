@@ -45,10 +45,10 @@ class Settings:
         "https://shopify-t.17track.net/track/shopify",
     )
     require_order_tracking_match: bool = (
-        os.getenv("REQUIRE_ORDER_TRACKING_MATCH", "false").lower() == "true"
+        os.getenv("REQUIRE_ORDER_TRACKING_MATCH", "true").lower() == "true"
     )
-    ip_limit_per_minute: int = int(os.getenv("IP_LIMIT_PER_MINUTE", "30"))
-    ip_limit_per_day: int = int(os.getenv("IP_LIMIT_PER_DAY", "300"))
+    ip_limit_per_minute: int = int(os.getenv("IP_LIMIT_PER_MINUTE", "5"))
+    ip_limit_per_day: int = int(os.getenv("IP_LIMIT_PER_DAY", "50"))
     tracking_refresh_window_seconds: int = int(
         os.getenv("TRACKING_REFRESH_WINDOW_SECONDS", "300")
     )
@@ -60,6 +60,8 @@ class Settings:
     hmac_max_age_seconds: int = int(os.getenv("HMAC_MAX_AGE_SECONDS", "300"))
     mock_when_api_key_missing: bool = os.getenv("MOCK_WHEN_API_KEY_MISSING", "true").lower() == "true"
     internal_dashboard_token: str = os.getenv("INTERNAL_DASHBOARD_TOKEN", "")
+    alert_webhook_url: str = os.getenv("ALERT_WEBHOOK_URL", "")
+    alert_min_interval_seconds: int = int(os.getenv("ALERT_MIN_INTERVAL_SECONDS", "900"))
 
 
 settings = Settings()
