@@ -183,6 +183,10 @@
 }
 
 .shipment-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
   margin-bottom: 18px;
 }
 
@@ -206,6 +210,25 @@
   font-size: clamp(22px, 2.3vw, 34px);
   font-weight: 500;
   line-height: 1.12;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.last-mile-card {
+  min-width: 190px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.last-mile-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -362,6 +385,10 @@
   display: grid;
 }
 
+.timeline.is-collapsed li[data-hidden="true"] {
+  display: none;
+}
+
 .timeline li {
   position: relative;
   display: grid;
@@ -421,9 +448,27 @@
   line-height: 1.5;
 }
 
+.timeline-toggle {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
   .tracking-page {
     padding: 40px 14px 60px;
+  }
+
+  .shipment-head {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .shipment-meta,

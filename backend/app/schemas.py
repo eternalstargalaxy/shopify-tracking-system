@@ -74,6 +74,7 @@ class TrackingShipment(BaseModel):
     tracking_number: str = Field(alias="trackingNumber")
     carrier_code: str | None = Field(default=None, alias="carrierCode")
     carrier_name: str | None = Field(default=None, alias="carrierName")
+    last_mile_tracking_number: str | None = Field(default=None, alias="lastMileTrackingNumber")
     normalized_status: NormalizedStatus = Field(alias="normalizedStatus")
     status_text: str = Field(alias="statusText")
     provider_status: str | None = Field(default=None, alias="providerStatus")

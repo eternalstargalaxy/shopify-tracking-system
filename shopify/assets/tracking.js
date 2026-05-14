@@ -12,6 +12,8 @@
   const trackButton = document.querySelector("#trackBtn");
   const TRACK_COOLDOWN_SECONDS = 15;
   const DELIVERY_SUPPORT_SPLIT = /(\.\s*For Delivery Issues.*$)/i;
+  const TIMELINE_PINNED_RECENT_COUNT = 2;
+  const TIMELINE_PINNED_EARLIEST_COUNT = 1;
 
   const STATUS_LABELS = {
     info_received: "Info received",
@@ -320,8 +322,17 @@
       renderOrderSummary(node, shipment.orderSummary);
 
       const timeline = node.querySelector(".timeline");
+      const timelineToggle = node.querySelector(".timeline-toggle");
       node.querySelector(".destination").textContent = shipment.destinationCountry || "-";
       node.dataset.status = shipment.normalizedStatus || "unknown";
+      const lastMileCard = node.querySelector(".last-mile-card");
+      const lastMileNumber = normalizeDisplayText(shipment.lastMileTrackingNumber);
+      if (lastMileCard) {
+        lastMileCard.hidden = !lastMileNumber;
+        if (lastMileNumber) {
+          node.querySelector(".last-mile-tracking-number").textContent = lastMileNumber;
+        }
+      }
 
       const timelineData = collapseOriginEvents(shipment.events || []);
       const events = timelineData.events;
@@ -366,12 +377,24 @@
           </div>
         `;
         timeline.appendChild(item);
+        timeline.classList.remove("is-collapsed");
+        if (timelineToggle) timelineToggle.hidden = true;
       }
 
-      events.forEach((event) => {
+      const collapseThreshold = TIMELINE_PINNED_RECENT_COUNT + TIMELINE_PINNED_EARLIEST_COUNT + 1;
+      const shouldCollapseTimeline = events.length > collapseThreshold;
+      const hiddenStartIndex = TIMELINE_PINNED_RECENT_COUNT;
+      const hiddenEndIndex = events.length - TIMELINE_PINNED_EARLIEST_COUNT - 1;
+      let hiddenCount = 0;
+
+      events.forEach((event, index) => {
         const item = document.createElement("li");
         const eventTime = event.eventTime || event.time;
         const eventLocation = formatLocation(event.location);
+        if (shouldCollapseTimeline && index >= hiddenStartIndex && index <= hiddenEndIndex) {
+          item.dataset.hidden = "true";
+          hiddenCount += 1;
+        }
         item.innerHTML = `
           <time>${escapeHtml(formatDate(eventTime))}</time>
           <div class="event-text">
@@ -381,6 +404,31 @@
         `;
         timeline.appendChild(item);
       });
+
+      if (timelineToggle) {
+        if (shouldCollapseTimeline && hiddenCount > 0) {
+          timeline.classList.add("is-collapsed");
+          timelineToggle.hidden = false;
+          timelineToggle.textContent = `Show more (${hiddenCount})`;
+          timelineToggle.dataset.expanded = "false";
+          timelineToggle.onclick = () => {
+            const expanded = timelineToggle.dataset.expanded === "true";
+            if (expanded) {
+              timeline.classList.add("is-collapsed");
+              timelineToggle.dataset.expanded = "false";
+              timelineToggle.textContent = `Show more (${hiddenCount})`;
+            } else {
+              timeline.classList.remove("is-collapsed");
+              timelineToggle.dataset.expanded = "true";
+              timelineToggle.textContent = "Show less";
+            }
+          };
+        } else {
+          timeline.classList.remove("is-collapsed");
+          timelineToggle.hidden = true;
+          timelineToggle.onclick = null;
+        }
+      }
 
       resultsList.appendChild(node);
     });

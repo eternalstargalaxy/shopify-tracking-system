@@ -59,6 +59,7 @@ def build_cached_shipment(record) -> TrackingShipment:
         trackingNumber=record["tracking_number"],
         carrierCode=record["carrier_code"],
         carrierName=record["carrier_name"],
+        lastMileTrackingNumber=None,
         normalizedStatus=record["normalized_status"],
         statusText=record["status_text"] or status_label(record["normalized_status"]),
         providerStatus=record["provider_status"],
@@ -202,6 +203,9 @@ def process_tracking_number(
 
     if record_is_fresh(record):
         shipment = build_cached_shipment(record)
+        shipment.last_mile_tracking_number = (
+            getattr(storefront_lookup, "last_mile_tracking_number", None) if storefront_lookup else None
+        )
         shipment.order_summary = resolve_order_summary(
             tracking_number,
             resolved_carrier_code,
@@ -265,6 +269,9 @@ def process_tracking_number(
         trackingNumber=parsed["tracking_number"],
         carrierCode=parsed["carrier_code"],
         carrierName=parsed["carrier_name"],
+        lastMileTrackingNumber=(
+            getattr(storefront_lookup, "last_mile_tracking_number", None) if storefront_lookup else None
+        ),
         normalizedStatus=parsed["normalized_status"],
         statusText=parsed["status_text"] or status_label(parsed["normalized_status"]),
         providerStatus=parsed["provider_status"],
