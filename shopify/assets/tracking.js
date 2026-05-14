@@ -91,6 +91,11 @@
     return [...new Set(matches.map((item) => item.toUpperCase()))].slice(0, 40);
   }
 
+  function looksLikeOrderNumber(value) {
+    const text = (value || "").trim().toUpperCase();
+    return /^[A-Z]{2,6}\d{3,}$/.test(text);
+  }
+
   function setTrackButtonLabel() {
     if (!trackButton) return;
     if (trackButton.disabled && cooldownRemaining > 0) {
@@ -502,6 +507,16 @@
         setMessage(`Looking up order ${orderNumber}...`);
         data = await queryOrder(orderNumber, email);
       } else {
+        const rawInput = (textarea.value || "").trim();
+        if (looksLikeOrderNumber(rawInput) && !rawInput.includes(" ")) {
+          setMessage("That looks like an order number. Switch to Order Number and enter the email used on your order.", true);
+          setQueryMode("order");
+          if (orderNumberInput) orderNumberInput.value = rawInput.toUpperCase();
+          if (orderEmailInput) orderEmailInput.focus();
+          trackButton.disabled = false;
+          setTrackButtonLabel();
+          return;
+        }
         const numbers = parseTrackingNumbers(textarea.value);
         if (!numbers.length) {
           setMessage("Please enter a valid tracking number.", true);
