@@ -25,6 +25,7 @@ from backend.app.observability import _build_alert_payload, _sign_feishu, monito
 from backend.app.seventeen_track import parse_track_info
 from backend.app import seventeen_track_storefront as storefront_module
 from backend.app import services as services_module
+from backend.app import shopify_admin as shopify_admin_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
 from backend.app.services import (
     is_valid_order_number,
@@ -667,6 +668,37 @@ class CoreTests(unittest.TestCase):
         self.assertFalse(is_valid_order_number("2806"))
         self.assertFalse(is_valid_order_number("LUK-2806"))
         self.assertFalse(is_valid_order_number("ABC"))
+        self.assertFalse(is_valid_order_number("YT2613500705594269"))
+
+    def test_shopify_admin_order_summary_keeps_images_and_prices(self) -> None:
+        order = {
+            "name": "LUK2781",
+            "processedAt": "2026-05-06T12:33:00Z",
+            "displayFulfillmentStatus": "FULFILLED",
+            "displayFinancialStatus": "PAID",
+            "currentTotalPriceSet": {
+                "shopMoney": {"amount": "215.84", "currencyCode": "GBP"}
+            },
+            "lineItems": {
+                "nodes": [
+                    {
+                        "name": "100% Linen Shawl V-Neck Cap Sleeves Top ELARA",
+                        "quantity": 1,
+                        "variantTitle": "Rosa / S",
+                        "image": {"url": "https://example.com/elara.jpg"},
+                        "originalUnitPriceSet": {
+                            "shopMoney": {"amount": "57.51", "currencyCode": "GBP"}
+                        },
+                    }
+                ]
+            },
+        }
+        summary = shopify_admin_module._parse_order_summary(order)
+        self.assertEqual(summary.order_name, "LUK2781")
+        self.assertEqual(summary.total_amount, "215.84")
+        self.assertEqual(summary.items[0].variant, "Rosa / S")
+        self.assertEqual(summary.items[0].image_url, "https://example.com/elara.jpg")
+        self.assertEqual(summary.items[0].unit_price, "57.51 GBP")
 
     def test_normalize_known_main_status(self) -> None:
         self.assertEqual(normalize_status("Delivered", None, None), "delivered")

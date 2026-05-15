@@ -93,7 +93,7 @@
 
   function looksLikeOrderNumber(value) {
     const text = (value || "").trim().toUpperCase();
-    return /^[A-Z]{2,6}\d{3,}$/.test(text);
+    return /^(?:[A-Z]{2,6}\d{3,8}|#\d{3,8})$/.test(text);
   }
 
   function setTrackButtonLabel() {

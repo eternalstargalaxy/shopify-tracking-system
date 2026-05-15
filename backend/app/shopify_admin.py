@@ -28,6 +28,16 @@ query OrderSummaryByName($query: String!) {
         nodes {
           name
           quantity
+          variantTitle
+          image {
+            url
+          }
+          originalUnitPriceSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
         }
       }
     }
@@ -94,27 +104,7 @@ class ShopifyAdminClient:
         if not orders:
             return None
 
-        order = orders[0]
-        price = (((order.get("currentTotalPriceSet") or {}).get("shopMoney")) or {})
-        line_items = ((order.get("lineItems") or {}).get("nodes")) or []
-        items = [
-            OrderSummaryItem(
-                title=(item.get("name") or "").strip() or "Item",
-                quantity=int(item.get("quantity") or 1),
-            )
-            for item in line_items
-        ]
-
-        return OrderSummary(
-            orderName=order.get("name"),
-            placedAt=order.get("processedAt"),
-            fulfillmentStatus=_format_admin_status(order.get("displayFulfillmentStatus")),
-            financialStatus=_format_admin_status(order.get("displayFinancialStatus")),
-            totalAmount=price.get("amount"),
-            currencyCode=price.get("currencyCode"),
-            items=items,
-            source="shopify_admin",
-        )
+        return _parse_order_summary(orders[0])
 
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
@@ -194,6 +184,46 @@ def _format_admin_status(value: str | None) -> str | None:
     if not value:
         return None
     return value.replace("_", " ").title()
+
+
+def _parse_order_summary(order: dict[str, Any]) -> OrderSummary:
+    price = (((order.get("currentTotalPriceSet") or {}).get("shopMoney")) or {})
+    line_items = ((order.get("lineItems") or {}).get("nodes")) or []
+    items = []
+    for item in line_items:
+        unit_price = (((item.get("originalUnitPriceSet") or {}).get("shopMoney")) or {})
+        image = item.get("image") or {}
+        items.append(
+            OrderSummaryItem(
+                title=(item.get("name") or "").strip() or "Item",
+                quantity=int(item.get("quantity") or 1),
+                variant=(item.get("variantTitle") or "").strip() or None,
+                imageUrl=(image.get("url") or "").strip() or None,
+                unitPrice=_format_unit_price(unit_price.get("amount"), unit_price.get("currencyCode")),
+                currencyCode=unit_price.get("currencyCode"),
+            )
+        )
+
+    return OrderSummary(
+        orderName=order.get("name"),
+        placedAt=order.get("processedAt"),
+        fulfillmentStatus=_format_admin_status(order.get("displayFulfillmentStatus")),
+        financialStatus=_format_admin_status(order.get("displayFinancialStatus")),
+        totalAmount=price.get("amount"),
+        currencyCode=price.get("currencyCode"),
+        items=items,
+        source="shopify_admin",
+    )
+
+
+def _format_unit_price(amount: str | None, currency_code: str | None) -> str | None:
+    if not amount:
+        return None
+    value = str(amount).strip()
+    code = (currency_code or "").strip()
+    if code:
+        return f"{value} {code}"
+    return value or None
 
 
 def _merge_items(primary_items: list[OrderSummaryItem], fallback_items: list[OrderSummaryItem]) -> list[OrderSummaryItem]:
