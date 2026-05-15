@@ -6,7 +6,6 @@
   const form = document.querySelector("#trackingForm");
   const textarea = document.querySelector("#trackingNumbers");
   const orderNumberInput = document.querySelector("#orderNumber");
-  const orderEmailInput = document.querySelector("#orderEmail");
   const modeButtons = Array.from(document.querySelectorAll(".tracking-mode-button"));
   const modePanels = Array.from(document.querySelectorAll("[data-mode-panel]"));
   const message = document.querySelector("#formMessage");
@@ -489,10 +488,9 @@
     return response.json();
   }
 
-  async function queryOrder(orderNumber, email) {
+  async function queryOrder(orderNumber) {
     const params = new URLSearchParams();
     params.set("order_no", orderNumber);
-    params.set("email", email);
 
     const response = await fetch(`${orderApiEndpoint}?${params.toString()}`, {
       headers: { Accept: "application/json" }
@@ -510,28 +508,21 @@
       let data;
       if (queryMode === "order") {
         const orderNumber = (orderNumberInput && orderNumberInput.value || "").trim().toUpperCase();
-        const email = (orderEmailInput && orderEmailInput.value || "").trim();
         if (!orderNumber) {
           setMessage("Please enter your order number.", true);
           trackButton.disabled = false;
           setTrackButtonLabel();
           return;
         }
-        if (!email) {
-          setMessage("Please enter the email address used on your order.", true);
-          trackButton.disabled = false;
-          setTrackButtonLabel();
-          return;
-        }
         setMessage(`Looking up order ${orderNumber}...`);
-        data = await queryOrder(orderNumber, email);
+        data = await queryOrder(orderNumber);
       } else {
         const rawInput = (textarea.value || "").trim();
         if (looksLikeOrderNumber(rawInput) && !rawInput.includes(" ")) {
-          setMessage("That looks like an order number. Switch to Order Number and enter the email used on your order.", true);
+          setMessage("That looks like an order number. Switch to Order Number to search by order.", true);
           setQueryMode("order");
           if (orderNumberInput) orderNumberInput.value = rawInput.toUpperCase();
-          if (orderEmailInput) orderEmailInput.focus();
+          if (orderNumberInput) orderNumberInput.focus();
           trackButton.disabled = false;
           setTrackButtonLabel();
           return;
@@ -582,15 +573,13 @@
   const url = new URL(window.location.href);
   const nums = url.searchParams.get("nums");
   const orderNo = url.searchParams.get("order_no");
-  const email = url.searchParams.get("email");
   setQueryMode("tracking");
   if (nums && textarea) {
     textarea.value = nums;
     submitQuery();
-  } else if (orderNo && email && orderNumberInput && orderEmailInput) {
+  } else if (orderNo && orderNumberInput) {
     setQueryMode("order");
     orderNumberInput.value = orderNo;
-    orderEmailInput.value = email;
     submitQuery();
   }
 

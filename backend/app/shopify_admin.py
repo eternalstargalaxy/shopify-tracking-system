@@ -89,18 +89,20 @@ class ShopifyAdminClient:
             return None
         return _parse_order_summary(orders[0])
 
-    def lookup_order_by_name_and_email(
+    def lookup_order_by_name(
         self,
         shop_domain: str | None,
         order_name: str | None,
-        email: str | None,
+        email: str | None = None,
     ) -> ShopifyOrderLookup | None:
-        if not self.enabled or not shop_domain or not order_name or not email:
+        if not self.enabled or not shop_domain or not order_name:
             return None
 
         normalized_order_name = (order_name or "").strip().upper()
         normalized_email = (email or "").strip().lower()
-        query = f'name:"{normalized_order_name}" AND email:{normalized_email}'
+        query = f'name:"{normalized_order_name}"'
+        if normalized_email:
+            query = f'{query} AND email:{normalized_email}'
         orders = self._search_orders(shop_domain, query)
         if not orders:
             return None
@@ -133,6 +135,14 @@ class ShopifyAdminClient:
             tracking_numbers=tracking_numbers,
             shipment_pending=not tracking_numbers and _looks_unshipped(order_summary.fulfillment_status),
         )
+
+    def lookup_order_by_name_and_email(
+        self,
+        shop_domain: str | None,
+        order_name: str | None,
+        email: str | None,
+    ) -> ShopifyOrderLookup | None:
+        return self.lookup_order_by_name(shop_domain, order_name, email)
 
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
@@ -343,10 +353,14 @@ def _merge_items(primary_items: list[OrderSummaryItem], fallback_items: list[Ord
     return primary_items
 
 
-def _matches_order_identity(order: dict[str, Any], order_name: str, email: str) -> bool:
+def _matches_order_identity(order: dict[str, Any], order_name: str, email: str | None) -> bool:
     candidate_name = str(order.get("name") or "").strip().upper()
     candidate_email = str(order.get("email") or "").strip().lower()
-    return candidate_name == order_name and candidate_email == email
+    if candidate_name != order_name:
+        return False
+    if email:
+        return candidate_email == email
+    return True
 
 
 def _extract_numeric_order_id(global_id: Any) -> str | None:

@@ -145,7 +145,7 @@ def track(
 def track_by_order(
     request: Request,
     order_no: str = Query(..., description="Store order number."),
-    email: str = Query(..., description="Order email address."),
+    email: str | None = Query(default=None, description="Optional order email address."),
 ) -> TrackResponse:
     shop_domain = verify_proxy_request(request)
     client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
