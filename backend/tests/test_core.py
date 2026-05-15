@@ -23,6 +23,7 @@ from backend.app.db import (
 from backend.app.normalization import normalize_status, status_label
 from backend.app.observability import _build_alert_payload, _sign_feishu, monitor_event_spike
 from backend.app.seventeen_track import parse_track_info
+from backend.app import seventeen_track_storefront as storefront_module
 from backend.app import services as services_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
 from backend.app.services import (
@@ -46,6 +47,28 @@ def workspace_temp_dir():
 
 
 class CoreTests(unittest.TestCase):
+    def test_storefront_resolution_prefers_incoming_shop_domain(self) -> None:
+        original_slug = config_module.settings.shopify_store_slug
+        original_url = config_module.settings.shopify_storefront_url
+        try:
+            object.__setattr__(config_module.settings, "shopify_store_slug", "lintico-uk")
+            object.__setattr__(
+                config_module.settings,
+                "shopify_storefront_url",
+                "https://linticoshop.uk",
+            )
+            self.assertEqual(
+                storefront_module._resolve_shop_slug("v2npww-33.myshopify.com"),
+                "v2npww-33",
+            )
+            self.assertEqual(
+                storefront_module._resolve_storefront_url("v2npww-33.myshopify.com"),
+                "https://v2npww-33.myshopify.com",
+            )
+        finally:
+            object.__setattr__(config_module.settings, "shopify_store_slug", original_slug)
+            object.__setattr__(config_module.settings, "shopify_storefront_url", original_url)
+
     def test_feishu_signature_generation(self) -> None:
         self.assertEqual(
             _sign_feishu("1710000000", "JvpXdHBvOh8gnz4dr1a52e"),

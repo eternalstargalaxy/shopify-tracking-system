@@ -216,13 +216,13 @@ class SeventeenTrackStorefrontClient:
 
 
 def _resolve_shop_slug(shop_domain: str | None) -> str | None:
-    explicit = (settings.shopify_store_slug or "").strip()
-    if explicit:
-        return explicit
-
     domain = (shop_domain or "").strip()
     if domain:
         return domain.split(".", 1)[0]
+
+    explicit = (settings.shopify_store_slug or "").strip()
+    if explicit:
+        return explicit
 
     if settings.allowed_shop_domains:
         return settings.allowed_shop_domains[0].split(".", 1)[0]
@@ -230,13 +230,13 @@ def _resolve_shop_slug(shop_domain: str | None) -> str | None:
 
 
 def _resolve_storefront_url(shop_domain: str | None) -> str | None:
-    explicit = (settings.shopify_storefront_url or "").strip().rstrip("/")
-    if explicit:
-        return explicit
-
     domain = (shop_domain or "").strip()
     if domain:
         return f"https://{domain}"
+
+    explicit = (settings.shopify_storefront_url or "").strip().rstrip("/")
+    if explicit:
+        return explicit
 
     if settings.allowed_shop_domains:
         return f"https://{settings.allowed_shop_domains[0]}"
