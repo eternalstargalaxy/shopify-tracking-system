@@ -7,12 +7,17 @@ import json
 import time
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .config import settings
-from .db import consume_rate_limit, count_recent_system_events, insert_system_event
+from .db import (
+    consume_rate_limit,
+    count_recent_system_events,
+    insert_system_event,
+    summarize_daily_usage,
+)
 
 
 def _window_start(window_seconds: int) -> int:
@@ -101,7 +106,12 @@ def send_alert(event: str, message: str, *, level: str = "error", **fields: Any)
         with urlopen(request, timeout=8) as response:
             response.read()
     except (HTTPError, URLError, TimeoutError):
-        log_event("alert_delivery_failed", level="error", message="Alert webhook delivery failed.", alert_event=event)
+        log_event(
+            "alert_delivery_failed",
+            level="error",
+            message="Alert webhook delivery failed.",
+            alert_event=event,
+        )
 
 
 def monitor_event_spike(
@@ -132,3 +142,38 @@ def monitor_event_spike(
         window_seconds=window_seconds,
         **fields,
     )
+
+
+def send_daily_usage_report(day: str | None = None) -> dict[str, Any]:
+    summary = summarize_daily_usage(day)
+    notes = [
+        "firstSeenTrackingCount 是当天新增运单的近似值，最接近 17TRACK 额度消耗口径。",
+        "successfulQueryCount 是系统成功返回的查询次数，不等于 17TRACK 官方账单口径。",
+    ]
+    message = (
+        "物流查询系统每日用量摘要\n"
+        f"- 日期(UTC): {summary['date']}\n"
+        f"- 当日新增运单数(额度近似值): {summary['firstSeenTrackingCount']}\n"
+        f"- 当日刷新运单数: {summary['refreshedTrackingCount']}\n"
+        f"- 成功查询次数: {summary['successfulQueryCount']}\n"
+        f"- 查询错误次数: {summary['queryErrorCount']}\n"
+        f"- 非本店拦截次数: {summary['notStoreOrderCount']}\n"
+        f"- 限流命中次数: {summary['rateLimitedCount']}"
+    )
+    send_alert(
+        f"daily_usage_report:{summary['date']}",
+        message,
+        level="info",
+        date=summary["date"],
+        first_seen_tracking_count=summary["firstSeenTrackingCount"],
+        refreshed_tracking_count=summary["refreshedTrackingCount"],
+        successful_query_count=summary["successfulQueryCount"],
+        query_error_count=summary["queryErrorCount"],
+        not_store_order_count=summary["notStoreOrderCount"],
+        rate_limited_count=summary["rateLimitedCount"],
+        notes=notes,
+    )
+    return {
+        **summary,
+        "notes": notes,
+    }

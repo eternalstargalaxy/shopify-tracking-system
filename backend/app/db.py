@@ -534,3 +534,45 @@ def count_recent_system_events(events: str | list[str] | tuple[str, ...], within
         return int(row["count"]) if row else 0
     finally:
         conn.close()
+
+
+def summarize_daily_usage(day: str | None = None) -> dict[str, Any]:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT
+              COUNT(DISTINCT CASE WHEN date(created_at) = date(COALESCE(?, 'now')) THEN tracking_number END) AS first_seen_tracking_count,
+              COUNT(DISTINCT CASE WHEN date(last_fetched_at) = date(COALESCE(?, 'now')) THEN tracking_number END) AS refreshed_tracking_count
+            FROM tracking_records
+            """,
+            (day, day),
+        ).fetchone()
+
+        def _event_count(event_names: tuple[str, ...]) -> int:
+            placeholders = ",".join("?" for _ in event_names)
+            query = f"""
+                SELECT COUNT(*) AS count
+                FROM system_events
+                WHERE event IN ({placeholders})
+                  AND date(created_at) = date(COALESCE(?, 'now'))
+            """
+            result = conn.execute(query, (*event_names, day)).fetchone()
+            return int(result["count"]) if result else 0
+
+        summary_day = conn.execute(
+            "SELECT date(COALESCE(?, 'now')) AS day",
+            (day,),
+        ).fetchone()["day"]
+
+        return {
+            "date": summary_day,
+            "firstSeenTrackingCount": int(row["first_seen_tracking_count"]) if row else 0,
+            "refreshedTrackingCount": int(row["refreshed_tracking_count"]) if row else 0,
+            "successfulQueryCount": _event_count(("tracking_query_success",)),
+            "queryErrorCount": _event_count(("tracking_query_error", "order_lookup_failed", "request_exception", "request_5xx")),
+            "notStoreOrderCount": _event_count(("tracking_not_store_order", "order_lookup_not_found")),
+            "rateLimitedCount": _event_count(("ip_rate_limited", "ip_daily_rate_limited", "tracking_refresh_limited")),
+        }
+    finally:
+        conn.close()

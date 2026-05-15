@@ -12,10 +12,16 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import ROOT_DIR, settings
 from .internal_auth import verify_internal_token
-from .db import init_db, summarize_system_events
-from .observability import log_event, send_alert
+from .db import init_db, summarize_daily_usage, summarize_system_events
+from .observability import log_event, send_alert, send_daily_usage_report
 from .rate_limit import enforce_ip_limits
-from .schemas import InternalTrackRequest, OpsSummaryResponse, RecentShipmentsResponse, TrackResponse
+from .schemas import (
+    DailyUsageSummaryResponse,
+    InternalTrackRequest,
+    OpsSummaryResponse,
+    RecentShipmentsResponse,
+    TrackResponse,
+)
 from .services import get_recent_shipments, parse_tracking_numbers, query_order_tracking, query_tracking_numbers
 from .seventeen_track import SeventeenTrackClient
 from .shopify_proxy import verify_proxy_request
@@ -217,3 +223,21 @@ def internal_ops_summary(
 ) -> OpsSummaryResponse:
     verify_internal_token(request)
     return OpsSummaryResponse(**summarize_system_events(limit))
+
+
+@app.get("/internal/api/ops/daily-usage", response_model=DailyUsageSummaryResponse)
+def internal_daily_usage_summary(
+    request: Request,
+    day: str | None = Query(default=None, description="Optional UTC date in YYYY-MM-DD format."),
+) -> DailyUsageSummaryResponse:
+    verify_internal_token(request)
+    return DailyUsageSummaryResponse(**summarize_daily_usage(day), notes=[])
+
+
+@app.post("/internal/api/ops/daily-usage-alert", response_model=DailyUsageSummaryResponse)
+def internal_daily_usage_alert(
+    request: Request,
+    day: str | None = Query(default=None, description="Optional UTC date in YYYY-MM-DD format."),
+) -> DailyUsageSummaryResponse:
+    verify_internal_token(request)
+    return DailyUsageSummaryResponse(**send_daily_usage_report(day))

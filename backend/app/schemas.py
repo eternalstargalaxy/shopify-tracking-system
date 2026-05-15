@@ -65,7 +65,7 @@ class OrderSummary(BaseModel):
     total_amount: str | None = Field(default=None, alias="totalAmount")
     currency_code: str | None = Field(default=None, alias="currencyCode")
     source: str | None = None
-    items: list[OrderSummaryItem] = []
+    items: list[OrderSummaryItem] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -86,7 +86,7 @@ class TrackingShipment(BaseModel):
     support_notice: str = Field(alias="supportNotice")
     cached: bool
     order_summary: OrderSummary | None = Field(default=None, alias="orderSummary")
-    events: list[TrackingEvent] = []
+    events: list[TrackingEvent] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -126,7 +126,7 @@ class OpsEvent(BaseModel):
     level: str
     message: str | None = None
     created_at: str = Field(alias="createdAt")
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
     model_config = {"populate_by_name": True}
 
@@ -136,5 +136,18 @@ class OpsSummaryResponse(BaseModel):
     error_count_24h: int = Field(alias="errorCount24h")
     warning_count_24h: int = Field(alias="warningCount24h")
     recent_events: list[OpsEvent] = Field(alias="recentEvents")
+
+    model_config = {"populate_by_name": True}
+
+
+class DailyUsageSummaryResponse(BaseModel):
+    date: str
+    first_seen_tracking_count: int = Field(alias="firstSeenTrackingCount")
+    refreshed_tracking_count: int = Field(alias="refreshedTrackingCount")
+    successful_query_count: int = Field(alias="successfulQueryCount")
+    query_error_count: int = Field(alias="queryErrorCount")
+    not_store_order_count: int = Field(alias="notStoreOrderCount")
+    rate_limited_count: int = Field(alias="rateLimitedCount")
+    notes: list[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}

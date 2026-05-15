@@ -139,10 +139,29 @@
     if (value == null) return "";
     const text = typeof value === "string" ? value.trim() : String(value).trim();
     if (!text || text === "[object Object]") return "";
+    const compact = text.toLowerCase().replace(/[\s_-]+/g, "");
+    if (compact.startsWith("notshipped") || compact === "null") {
+      return "";
+    }
     if ((text.startsWith("{") && text.includes("country")) || text.includes("'country': None")) {
       return "";
     }
     return text;
+  }
+
+  function getPrimaryShipmentLabel(shipment) {
+    return normalizeDisplayText(shipment.trackingNumber)
+      || normalizeDisplayText(shipment.orderSummary && shipment.orderSummary.orderName)
+      || normalizeDisplayText(shipment.statusText)
+      || "Tracking pending";
+  }
+
+  function getSummarySentence(shipment) {
+    const providerStatus = normalizeDisplayText(shipment.providerStatus).toLowerCase();
+    if (providerStatus === "not shipped") {
+      return "This order has not been shipped yet.";
+    }
+    return STATUS_SENTENCES[shipment.normalizedStatus] || "Tracking updates are available below.";
   }
 
   function formatLocation(value) {
@@ -340,8 +359,8 @@
     shipments.forEach((shipment) => {
       const node = template.content.firstElementChild.cloneNode(true);
       node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Carrier pending";
-      node.querySelector(".tracking-number").textContent = shipment.trackingNumber;
-      node.querySelector(".shipment-summary-line").textContent = STATUS_SENTENCES[shipment.normalizedStatus] || "Tracking updates are available below.";
+      node.querySelector(".tracking-number").textContent = getPrimaryShipmentLabel(shipment);
+      node.querySelector(".shipment-summary-line").textContent = getSummarySentence(shipment);
       renderOrderSummary(node, shipment.orderSummary);
 
       const timeline = node.querySelector(".timeline");

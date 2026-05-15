@@ -17,11 +17,17 @@ from backend.app.db import (
     fetch_tracking_record,
     init_db,
     is_store_order_tracking_number,
+    summarize_daily_usage,
     upsert_order_tracking_number,
     upsert_tracking_record,
 )
 from backend.app.normalization import normalize_status, status_label
-from backend.app.observability import _build_alert_payload, _sign_feishu, monitor_event_spike
+from backend.app.observability import (
+    _build_alert_payload,
+    _sign_feishu,
+    monitor_event_spike,
+    send_daily_usage_report,
+)
 from backend.app.seventeen_track import parse_track_info
 from backend.app import seventeen_track_storefront as storefront_module
 from backend.app import services as services_module
@@ -338,6 +344,7 @@ class CoreTests(unittest.TestCase):
             carrier_name = "4PX"
             destination_country = "GB"
             tracking_params = {"fc": 190094, "g": "demo-guid", "num": "4PX3002754801725CN", "sc": 0, "params": {}}
+            shipment_pending = False
             order_summary = services_module.build_local_order_summary(
                 {
                     "order_name": "LUK2806",
@@ -494,6 +501,7 @@ class CoreTests(unittest.TestCase):
             carrier_name = "4PX"
             destination_country = "GB"
             last_mile_tracking_number = "JJD0002234523168744"
+            shipment_pending = False
             tracking_params = {"fc": 190094, "g": "demo-guid", "num": "4PX3002754801725CN", "sc": 0, "params": {}}
             order_summary = OrderSummary(
                 orderName="LUK2806",
@@ -572,6 +580,131 @@ class CoreTests(unittest.TestCase):
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
                 services_module.storefront_client.lookup_by_order = original_lookup_by_order
                 services_module.storefront_client.fetch_tracking_detail = original_detail_lookup
+
+    def test_query_order_tracking_handles_unshipped_placeholder(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.fail("register should not be called for an unshipped order")
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.fail("get_track_info should not be called for an unshipped order")
+
+        class FakeStorefrontLookup:
+            order_name = "LUK3999"
+            carrier_code = None
+            carrier_name = None
+            destination_country = "GB"
+            last_mile_tracking_number = None
+            shipment_pending = True
+            tracking_params = {"fc": None, "g": None, "num": None, "sc": 0, "params": {}}
+            order_summary = OrderSummary(orderName="LUK3999", source="17track_shopify")
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_admin_token = services_module.shopify_admin_client.access_token
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                services_module.storefront_client.lookup_by_order = lambda *_args, **_kwargs: FakeStorefrontLookup()
+                services_module.shopify_admin_client.access_token = ""
+                init_db()
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LUK3999",
+                    "demo@example.com",
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual(len(shipments), 1)
+                self.assertEqual(shipments[0].tracking_number, "")
+                self.assertEqual(shipments[0].status_text, "Not shipped yet")
+                self.assertEqual(shipments[0].provider_status, "Not shipped")
+                self.assertEqual(shipments[0].order_summary.order_name, "LUK3999")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
+                services_module.shopify_admin_client.access_token = original_admin_token
+
+    def test_process_tracking_number_refreshes_empty_unknown_cache_without_fc(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "auto",
+                                "track": {
+                                    "z0": "Delivered",
+                                    "z1": "Delivered at front desk",
+                                    "tracking": [
+                                        {
+                                            "eventTime": "2026-05-12T13:43:00Z",
+                                            "location": "Front desk",
+                                            "description": "Delivered at front desk",
+                                            "status": "Delivered",
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        class FakeStorefrontLookup:
+            order_name = "LC8100320"
+            carrier_code = None
+            carrier_name = None
+            destination_country = "US"
+            last_mile_tracking_number = None
+            shipment_pending = False
+            tracking_params = {"fc": 0, "g": None, "num": "4PX3001999027341CN", "sc": 0, "params": {}}
+            order_summary = OrderSummary(orderName="LC8100320", source="17track_shopify")
+
+        original_db_path = config_module.settings.database_path
+        original_lookup = services_module.storefront_client.lookup_by_tracking
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                upsert_tracking_record(
+                    {
+                        "tracking_number": "4PX3001999027341CN",
+                        "carrier_code": "",
+                        "carrier_name": None,
+                        "shop_domain": "2vnpww-33.myshopify.com",
+                        "is_registered": True,
+                        "normalized_status": "unknown",
+                        "status_text": "No tracking updates",
+                        "provider_status": None,
+                        "provider_status_description": "No tracking updates",
+                        "origin_country": None,
+                        "destination_country": "US",
+                        "last_event_time": None,
+                        "last_fetched_at": "2026-05-15T08:10:00+00:00",
+                        "cache_expires_at": "2099-05-15T10:10:00+00:00",
+                        "events": [],
+                        "raw_response": {},
+                    }
+                )
+                services_module.storefront_client.lookup_by_tracking = lambda *_args, **_kwargs: FakeStorefrontLookup()
+                shipment, error = process_tracking_number(
+                    FakeClient(),
+                    "4PX3001999027341CN",
+                    None,
+                    "2vnpww-33.myshopify.com",
+                    enforce_order_match=True,
+                )
+                self.assertIsNone(error)
+                self.assertIsNotNone(shipment)
+                self.assertEqual(shipment.normalized_status, "delivered")
+                self.assertEqual(len(shipment.events), 1)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_tracking = original_lookup
 
     def test_store_order_match_without_carrier_accepts_specific_carrier_row(self) -> None:
         original_db_path = config_module.settings.database_path
@@ -838,6 +971,52 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(parsed["provider_status"], "NotFound")
         self.assertEqual(parsed["status_text"], "No tracking updates yet")
         self.assertEqual(parsed["destination_country"], "GB")
+
+    def test_summarize_daily_usage_and_report(self) -> None:
+        original_db_path = config_module.settings.database_path
+        original_url = config_module.settings.alert_webhook_url
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                object.__setattr__(config_module.settings, "alert_webhook_url", "")
+                init_db()
+                upsert_tracking_record(
+                    {
+                        "tracking_number": "RJ556381428CN",
+                        "carrier_code": "3011",
+                        "carrier_name": "YunExpress",
+                        "shop_domain": "demo.myshopify.com",
+                        "is_registered": True,
+                        "normalized_status": "in_transit",
+                        "status_text": "In transit",
+                        "provider_status": "InTransit",
+                        "provider_status_description": "Parcel moving",
+                        "origin_country": "CN",
+                        "destination_country": "GB",
+                        "last_event_time": "2026-05-06T08:00:00+00:00",
+                        "last_fetched_at": "2026-05-15T08:10:00+00:00",
+                        "cache_expires_at": "2026-05-15T10:10:00+00:00",
+                        "events": [],
+                        "raw_response": {},
+                    }
+                )
+                services_module.log_event("tracking_query_success", tracking_number="RJ556381428CN")
+                services_module.log_event("tracking_not_store_order", level="warning", tracking_number="BAD123456")
+                services_module.log_event("ip_rate_limited", level="warning", client_ip="127.0.0.1")
+
+                summary = summarize_daily_usage()
+                self.assertGreaterEqual(summary["firstSeenTrackingCount"], 1)
+                self.assertGreaterEqual(summary["refreshedTrackingCount"], 1)
+                self.assertEqual(summary["successfulQueryCount"], 1)
+                self.assertEqual(summary["notStoreOrderCount"], 1)
+                self.assertEqual(summary["rateLimitedCount"], 1)
+
+                report = send_daily_usage_report()
+                self.assertIn("notes", report)
+                self.assertEqual(report["successfulQueryCount"], 1)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "alert_webhook_url", original_url)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ class StoreOrderLookup:
     destination_country: str | None
     last_mile_tracking_number: str | None
     order_summary: OrderSummary | None
+    shipment_pending: bool
     tracking_params: dict
     raw_response: dict
 
@@ -280,6 +281,9 @@ def _parse_store_lookup(raw: dict) -> StoreOrderLookup | None:
             source="17track_shopify",
         )
 
+    raw_tracking_number = _text(info.get("no")) or None
+    tracking_number = None if _is_pending_tracking_placeholder(raw_tracking_number) else raw_tracking_number
+
     return StoreOrderLookup(
         order_name=order_name,
         carrier_code=_text(first_carrier.get("key")) or None,
@@ -287,8 +291,9 @@ def _parse_store_lookup(raw: dict) -> StoreOrderLookup | None:
         destination_country=_text(info.get("destCountry")) or None,
         last_mile_tracking_number=_text(last_mile.get("track_no")) or None,
         order_summary=order_summary,
+        shipment_pending=tracking_number is None and bool(order_name),
         tracking_params={
-            "num": _text(info.get("no")) or None,
+            "num": tracking_number,
             "fc": info.get("fc"),
             "sc": info.get("sc"),
             "g": _text(info.get("g")) or None,
@@ -310,6 +315,13 @@ def _sum_item_prices(items: list[dict]) -> str | None:
     if not has_value:
         return None
     return f"{total:.2f}"
+
+
+def _is_pending_tracking_placeholder(value: str | None) -> bool:
+    text = _text(value).upper().replace(" ", "").replace("_", "").replace("-", "")
+    if not text:
+        return False
+    return text.startswith("NOTSHIPPED")
 
 
 def _text(value: object) -> str:

@@ -105,6 +105,52 @@ def resolve_order_summary(
     return merge_order_summaries(summary, local_summary)
 
 
+def resolve_order_summary_for_lookup(
+    storefront_lookup: StoreOrderLookup,
+    shop_domain: str | None,
+) -> object | None:
+    local_summary = build_local_order_summary(
+        {
+            "order_name": storefront_lookup.order_name,
+            "source": "manual",
+        }
+    )
+    admin_summary = None
+    if storefront_lookup.order_name and shop_domain:
+        admin_summary = shopify_admin_client.lookup_order_summary(
+            shop_domain,
+            storefront_lookup.order_name,
+        )
+
+    summary = merge_order_summaries(admin_summary, storefront_lookup.order_summary)
+    return merge_order_summaries(summary, local_summary)
+
+
+def build_unshipped_order_shipment(
+    storefront_lookup: StoreOrderLookup,
+    shop_domain: str | None,
+) -> TrackingShipment:
+    now = datetime.now(timezone.utc).isoformat()
+    return TrackingShipment(
+        trackingNumber="",
+        carrierCode=storefront_lookup.carrier_code,
+        carrierName=storefront_lookup.carrier_name,
+        lastMileTrackingNumber=storefront_lookup.last_mile_tracking_number,
+        normalizedStatus="unknown",
+        statusText="Not shipped yet",
+        providerStatus="Not shipped",
+        providerStatusDescription="This order has not been shipped yet.",
+        originCountry=None,
+        destinationCountry=storefront_lookup.destination_country,
+        lastEventTime=None,
+        updatedAt=now,
+        supportNotice="This order has not been shipped yet.",
+        cached=False,
+        orderSummary=resolve_order_summary_for_lookup(storefront_lookup, shop_domain),
+        events=[],
+    )
+
+
 def query_tracking_numbers(
     client: SeventeenTrackClient,
     tracking_numbers: list[str],
@@ -167,6 +213,19 @@ def _should_retry_with_detected_carrier(parsed: dict, carrier_code: str | None) 
     return parsed.get("normalized_status") in {"not_found", "unknown"} and not parsed.get("events")
 
 
+def _should_refresh_empty_record(
+    record: dict | None,
+    storefront_lookup: StoreOrderLookup | None,
+) -> bool:
+    if not record or not storefront_lookup:
+        return False
+    if record["normalized_status"] not in {"unknown", "not_found"}:
+        return False
+    if _record_has_tracking_events(record):
+        return False
+    return bool(storefront_lookup.order_name or storefront_lookup.tracking_params.get("num"))
+
+
 def process_tracking_number(
     client: SeventeenTrackClient,
     tracking_number: str,
@@ -203,13 +262,17 @@ def process_tracking_number(
         )
         store_match = True
 
-    if (
-        record
-        and storefront_lookup
-        and storefront_lookup.tracking_params.get("fc")
-        and record["normalized_status"] in {"unknown", "not_found"}
-        and not _record_has_tracking_events(record)
-    ):
+    if storefront_lookup and not storefront_lookup.tracking_params.get("fc") and storefront_lookup.order_name:
+        log_event(
+            "storefront_lookup_missing_tracking_params",
+            level="warning",
+            tracking_number=tracking_number,
+            carrier_code=carrier_code,
+            shop_domain=shop_domain,
+            order_name=storefront_lookup.order_name,
+        )
+
+    if _should_refresh_empty_record(record, storefront_lookup):
         record = None
 
     if should_enforce_order_match and not store_match:
@@ -360,6 +423,17 @@ def query_order_tracking(
         ]
     lookup = storefront_client.lookup_by_order(normalized_order_number, email, shop_domain)
     tracking_number = (lookup.tracking_params.get("num") if lookup else None) or None
+    if lookup and lookup.shipment_pending:
+        shipment = build_unshipped_order_shipment(lookup, shop_domain)
+        log_event(
+            "order_lookup_pending_shipment",
+            order_number=normalized_order_number,
+            email=email,
+            shop_domain=shop_domain,
+            order_name=lookup.order_name,
+        )
+        return [shipment], []
+
     if not lookup or not tracking_number:
         log_event(
             "order_lookup_not_found",
