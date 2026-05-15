@@ -354,13 +354,25 @@
   function renderShipments(shipments) {
     resultsList.innerHTML = "";
     emptyState.hidden = shipments.length > 0;
+    const totalShipments = shipments.length;
 
-    shipments.forEach((shipment) => {
+    shipments.forEach((shipment, index) => {
       const node = template.content.firstElementChild.cloneNode(true);
+      const packageLabel = node.querySelector(".shipment-package-label");
       node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Carrier pending";
       node.querySelector(".tracking-number").textContent = getPrimaryShipmentLabel(shipment);
       node.querySelector(".shipment-summary-line").textContent = getSummarySentence(shipment);
       renderOrderSummary(node, shipment.orderSummary);
+      if (packageLabel) {
+        packageLabel.hidden = totalShipments <= 1;
+        if (totalShipments > 1) {
+          packageLabel.textContent = `Package ${index + 1} of ${totalShipments}`;
+        }
+      }
+      if (totalShipments > 1 && index > 0) {
+        const orderPanel = node.querySelector(".order-summary-panel");
+        if (orderPanel) orderPanel.hidden = true;
+      }
 
       const timeline = node.querySelector(".timeline");
       const timelineToggle = node.querySelector(".timeline-toggle");

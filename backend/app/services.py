@@ -173,6 +173,11 @@ def build_unshipped_admin_order_shipment(order_summary: object) -> TrackingShipm
     )
 
 
+def _order_has_unshipped_remainder(fulfillment_status: str | None) -> bool:
+    normalized = str(fulfillment_status or "").strip().lower()
+    return normalized in {"partially fulfilled", "partial", "partially_shipped"}
+
+
 def query_tracking_numbers(
     client: SeventeenTrackClient,
     tracking_numbers: list[str],
@@ -472,16 +477,24 @@ def query_order_tracking(
             return [shipment], []
 
         if admin_lookup.tracking_numbers:
-            primary_tracking = admin_lookup.tracking_numbers[0]
-            shipment, error = process_tracking_number(
-                client,
-                primary_tracking.tracking_number,
-                None,
-                shop_domain,
-                enforce_order_match=True,
-            )
-            shipments = [shipment] if shipment else []
-            errors = [error] if error else []
+            shipments: list[TrackingShipment] = []
+            errors: list[QueryError] = []
+            for tracking_ref in admin_lookup.tracking_numbers:
+                shipment, error = process_tracking_number(
+                    client,
+                    tracking_ref.tracking_number,
+                    None,
+                    shop_domain,
+                    enforce_order_match=True,
+                )
+                if shipment:
+                    shipments.append(shipment)
+                if error:
+                    errors.append(error)
+
+            if shipments and _order_has_unshipped_remainder(admin_lookup.order_summary.fulfillment_status):
+                shipments.append(build_unshipped_admin_order_shipment(admin_lookup.order_summary))
+
             if errors:
                 send_alert(
                     "order_lookup_failed",
