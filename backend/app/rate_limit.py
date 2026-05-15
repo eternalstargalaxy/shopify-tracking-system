@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from .config import settings
 from .db import consume_rate_limit
-from .observability import log_event
+from .observability import log_event, monitor_event_spike
 
 
 def _window_start(window_seconds: int) -> int:
@@ -25,6 +25,14 @@ def enforce_ip_limits(client_ip: str) -> None:
             minute_count=minute_count,
             minute_limit=settings.ip_limit_per_minute,
         )
+        monitor_event_spike(
+            source_events=("ip_rate_limited", "ip_daily_rate_limited"),
+            alert_event="rate_limit_spike",
+            threshold=settings.alert_rate_limit_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Rate-limit rejections spiked within the alert window.",
+            client_ip=client_ip,
+        )
         raise HTTPException(status_code=429, detail="Too many requests from this IP.")
 
     day_count = consume_rate_limit("ip_day", client_ip, _window_start(86400))
@@ -36,6 +44,14 @@ def enforce_ip_limits(client_ip: str) -> None:
             client_ip=client_ip,
             day_count=day_count,
             day_limit=settings.ip_limit_per_day,
+        )
+        monitor_event_spike(
+            source_events=("ip_rate_limited", "ip_daily_rate_limited"),
+            alert_event="rate_limit_spike",
+            threshold=settings.alert_rate_limit_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Rate-limit rejections spiked within the alert window.",
+            client_ip=client_ip,
         )
         raise HTTPException(status_code=429, detail="Daily request limit exceeded for this IP.")
 

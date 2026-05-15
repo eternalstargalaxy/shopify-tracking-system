@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl
 from fastapi import HTTPException, Request
 
 from .config import settings
-from .observability import log_event
+from .observability import log_event, monitor_event_spike
 
 
 def _build_message(query_string: str) -> tuple[str, str | None]:
@@ -33,6 +33,14 @@ def verify_proxy_request(request: Request) -> str | None:
     if settings.bypass_proxy_signature:
         return request.query_params.get("shop")
 
+    proxy_failure_events = (
+        "proxy_signature_missing",
+        "proxy_signature_invalid",
+        "proxy_timestamp_invalid",
+        "proxy_timestamp_expired",
+        "proxy_shop_not_allowed",
+    )
+
     if not settings.shopify_app_secret:
         log_event(
             "proxy_config_missing_secret",
@@ -52,6 +60,14 @@ def verify_proxy_request(request: Request) -> str | None:
             path=request.url.path,
             query=raw_query,
         )
+        monitor_event_spike(
+            source_events=proxy_failure_events,
+            alert_event="proxy_rejection_spike",
+            threshold=settings.alert_proxy_failure_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Shopify proxy verification failures spiked within the alert window.",
+            path=request.url.path,
+        )
         raise HTTPException(status_code=401, detail="Missing Shopify app proxy signature.")
 
     computed = hmac.new(
@@ -66,6 +82,14 @@ def verify_proxy_request(request: Request) -> str | None:
             message="Invalid Shopify app proxy signature.",
             path=request.url.path,
             query=raw_query,
+        )
+        monitor_event_spike(
+            source_events=proxy_failure_events,
+            alert_event="proxy_rejection_spike",
+            threshold=settings.alert_proxy_failure_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Shopify proxy verification failures spiked within the alert window.",
+            path=request.url.path,
         )
         raise HTTPException(status_code=401, detail="Invalid Shopify app proxy signature.")
 
@@ -82,6 +106,14 @@ def verify_proxy_request(request: Request) -> str | None:
                 query=raw_query,
                 timestamp=timestamp,
             )
+            monitor_event_spike(
+                source_events=proxy_failure_events,
+                alert_event="proxy_rejection_spike",
+                threshold=settings.alert_proxy_failure_spike_threshold,
+                window_seconds=settings.alert_spike_window_seconds,
+                message="Shopify proxy verification failures spiked within the alert window.",
+                path=request.url.path,
+            )
             raise HTTPException(status_code=401, detail="Invalid Shopify proxy timestamp.") from exc
         if age > settings.hmac_max_age_seconds:
             log_event(
@@ -92,6 +124,14 @@ def verify_proxy_request(request: Request) -> str | None:
                 query=raw_query,
                 timestamp=timestamp,
                 max_age_seconds=settings.hmac_max_age_seconds,
+            )
+            monitor_event_spike(
+                source_events=proxy_failure_events,
+                alert_event="proxy_rejection_spike",
+                threshold=settings.alert_proxy_failure_spike_threshold,
+                window_seconds=settings.alert_spike_window_seconds,
+                message="Shopify proxy verification failures spiked within the alert window.",
+                path=request.url.path,
             )
             raise HTTPException(status_code=401, detail="Expired Shopify proxy timestamp.")
 
@@ -104,6 +144,15 @@ def verify_proxy_request(request: Request) -> str | None:
             path=request.url.path,
             shop_domain=shop_domain,
             allowed_shop_domains=settings.allowed_shop_domains,
+        )
+        monitor_event_spike(
+            source_events=proxy_failure_events,
+            alert_event="proxy_rejection_spike",
+            threshold=settings.alert_proxy_failure_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Shopify proxy verification failures spiked within the alert window.",
+            path=request.url.path,
+            shop_domain=shop_domain,
         )
         raise HTTPException(status_code=403, detail="Shop domain is not allowed.")
 

@@ -81,6 +81,9 @@
 - 17TRACK Shopify 店铺摘要接口失败
 - 17TRACK Shopify 店铺详情接口失败
 - 订单号查询失败
+- 限流命中在短时间内激增
+- Shopify 验签失败在短时间内激增
+- 非本店订单 / 运单查询拒绝在短时间内激增
 
 告警默认支持通用 webhook，也支持 Feishu 机器人。
 
@@ -108,6 +111,32 @@ ALERT_MIN_INTERVAL_SECONDS=900
 ```
 
 也就是 15 分钟内同类错误不会无限刷屏。
+
+### 趋势型告警
+
+除了单次严重错误，当前还额外监控三类“短时间激增”场景：
+
+- `rate_limit_spike`
+  - 来源事件：`ip_rate_limited`、`ip_daily_rate_limited`
+- `proxy_rejection_spike`
+  - 来源事件：`proxy_signature_missing`、`proxy_signature_invalid`、`proxy_timestamp_invalid`、`proxy_timestamp_expired`、`proxy_shop_not_allowed`
+- `not_store_order_spike`
+  - 来源事件：`tracking_not_store_order`、`order_lookup_not_found`
+
+默认阈值：
+
+```env
+ALERT_SPIKE_WINDOW_SECONDS=300
+ALERT_RATE_LIMIT_SPIKE_THRESHOLD=8
+ALERT_PROXY_FAILURE_SPIKE_THRESHOLD=5
+ALERT_NOT_STORE_ORDER_SPIKE_THRESHOLD=8
+```
+
+含义：
+
+- 5 分钟内限流命中达到 8 次，会发一次趋势告警
+- 5 分钟内 Shopify 验签失败相关事件达到 5 次，会发一次趋势告警
+- 5 分钟内“非本店订单/运单拒绝”达到 8 次，会发一次趋势告警
 
 ## 五、内部运维汇总接口
 

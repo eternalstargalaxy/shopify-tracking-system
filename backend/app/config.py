@@ -63,6 +63,16 @@ class Settings:
     alert_webhook_url: str = os.getenv("ALERT_WEBHOOK_URL", "")
     alert_webhook_secret: str = os.getenv("ALERT_WEBHOOK_SECRET", "")
     alert_min_interval_seconds: int = int(os.getenv("ALERT_MIN_INTERVAL_SECONDS", "900"))
+    alert_spike_window_seconds: int = int(os.getenv("ALERT_SPIKE_WINDOW_SECONDS", "300"))
+    alert_rate_limit_spike_threshold: int = int(
+        os.getenv("ALERT_RATE_LIMIT_SPIKE_THRESHOLD", "8")
+    )
+    alert_proxy_failure_spike_threshold: int = int(
+        os.getenv("ALERT_PROXY_FAILURE_SPIKE_THRESHOLD", "5")
+    )
+    alert_not_store_order_spike_threshold: int = int(
+        os.getenv("ALERT_NOT_STORE_ORDER_SPIKE_THRESHOLD", "8")
+    )
 
 
 settings = Settings()

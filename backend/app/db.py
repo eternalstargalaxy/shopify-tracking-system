@@ -510,3 +510,27 @@ def summarize_system_events(limit: int = 20) -> dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+def count_recent_system_events(events: str | list[str] | tuple[str, ...], within_seconds: int) -> int:
+    event_names = [events] if isinstance(events, str) else list(events)
+    if not event_names:
+        return 0
+
+    cutoff = (datetime.now(timezone.utc).timestamp() - max(within_seconds, 1))
+    cutoff_text = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
+    placeholders = ",".join("?" for _ in event_names)
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS count
+            FROM system_events
+            WHERE event IN ({placeholders})
+              AND created_at >= ?
+            """,
+            (*event_names, cutoff_text),
+        ).fetchone()
+        return int(row["count"]) if row else 0
+    finally:
+        conn.close()

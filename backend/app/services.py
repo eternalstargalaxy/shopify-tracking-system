@@ -14,7 +14,7 @@ from .db import (
     upsert_tracking_record,
 )
 from .normalization import compute_cache_expiry, status_label, support_notice
-from .observability import log_event, send_alert
+from .observability import log_event, monitor_event_spike, send_alert
 from .rate_limit import enforce_tracking_refresh_limit
 from .schemas import QueryError, TrackingShipment
 from .seventeen_track import SeventeenTrackClient, parse_track_info
@@ -219,6 +219,14 @@ def process_tracking_number(
             carrier_code=carrier_code,
             shop_domain=shop_domain,
         )
+        monitor_event_spike(
+            source_events=("tracking_not_store_order", "order_lookup_not_found"),
+            alert_event="not_store_order_spike",
+            threshold=settings.alert_not_store_order_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Store-order validation rejections spiked within the alert window.",
+            shop_domain=shop_domain,
+        )
         return None, QueryError(
             trackingNumber=tracking_number,
             code="not_store_order",
@@ -357,6 +365,14 @@ def query_order_tracking(
             "order_lookup_not_found",
             order_number=normalized_order_number,
             email=email,
+            shop_domain=shop_domain,
+        )
+        monitor_event_spike(
+            source_events=("tracking_not_store_order", "order_lookup_not_found"),
+            alert_event="not_store_order_spike",
+            threshold=settings.alert_not_store_order_spike_threshold,
+            window_seconds=settings.alert_spike_window_seconds,
+            message="Store-order validation rejections spiked within the alert window.",
             shop_domain=shop_domain,
         )
         return [], [

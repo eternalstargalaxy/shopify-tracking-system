@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .config import settings
-from .db import consume_rate_limit, insert_system_event
+from .db import consume_rate_limit, count_recent_system_events, insert_system_event
 
 
 def _window_start(window_seconds: int) -> int:
@@ -102,3 +102,33 @@ def send_alert(event: str, message: str, *, level: str = "error", **fields: Any)
             response.read()
     except (HTTPError, URLError, TimeoutError):
         log_event("alert_delivery_failed", level="error", message="Alert webhook delivery failed.", alert_event=event)
+
+
+def monitor_event_spike(
+    *,
+    source_events: str | list[str] | tuple[str, ...],
+    alert_event: str,
+    threshold: int,
+    window_seconds: int,
+    message: str,
+    level: str = "warning",
+    **fields: Any,
+) -> None:
+    if threshold <= 0 or window_seconds <= 0:
+        return
+
+    event_count = count_recent_system_events(source_events, window_seconds)
+    if event_count < threshold:
+        return
+
+    tracked_events = [source_events] if isinstance(source_events, str) else list(source_events)
+    send_alert(
+        alert_event,
+        message,
+        level=level,
+        source_events=tracked_events,
+        event_count=event_count,
+        threshold=threshold,
+        window_seconds=window_seconds,
+        **fields,
+    )

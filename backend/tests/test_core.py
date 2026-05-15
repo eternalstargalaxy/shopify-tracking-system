@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from backend.app import config as config_module
 from backend.app import main as main_module
 from backend.app.db import (
+    count_recent_system_events,
     fetch_tracking_record,
     init_db,
     is_store_order_tracking_number,
@@ -20,7 +21,7 @@ from backend.app.db import (
     upsert_tracking_record,
 )
 from backend.app.normalization import normalize_status, status_label
-from backend.app.observability import _build_alert_payload, _sign_feishu
+from backend.app.observability import _build_alert_payload, _sign_feishu, monitor_event_spike
 from backend.app.seventeen_track import parse_track_info
 from backend.app import services as services_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
@@ -78,6 +79,44 @@ class CoreTests(unittest.TestCase):
         finally:
             object.__setattr__(config_module.settings, "alert_webhook_url", original_url)
             object.__setattr__(config_module.settings, "alert_webhook_secret", original_secret)
+
+    def test_monitor_event_spike_counts_recent_events(self) -> None:
+        original_db_path = config_module.settings.database_path
+        original_url = config_module.settings.alert_webhook_url
+        original_interval = config_module.settings.alert_min_interval_seconds
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                object.__setattr__(config_module.settings, "alert_webhook_url", "")
+                object.__setattr__(config_module.settings, "alert_min_interval_seconds", 60)
+                init_db()
+
+                services_module.log_event("tracking_not_store_order", level="warning", shop_domain="demo.myshopify.com")
+                services_module.log_event("order_lookup_not_found", level="warning", shop_domain="demo.myshopify.com")
+
+                count = count_recent_system_events(
+                    ("tracking_not_store_order", "order_lookup_not_found"),
+                    300,
+                )
+                self.assertEqual(count, 2)
+
+                monitor_event_spike(
+                    source_events=("tracking_not_store_order", "order_lookup_not_found"),
+                    alert_event="not_store_order_spike",
+                    threshold=2,
+                    window_seconds=300,
+                    message="Store-order validation rejections spiked within the alert window.",
+                    shop_domain="demo.myshopify.com",
+                )
+
+                self.assertGreaterEqual(
+                    count_recent_system_events("alert_delivery_failed", 300),
+                    0,
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "alert_webhook_url", original_url)
+                object.__setattr__(config_module.settings, "alert_min_interval_seconds", original_interval)
 
     def test_fetch_tracking_record_without_carrier_uses_detected_carrier(self) -> None:
         original_db_path = config_module.settings.database_path
