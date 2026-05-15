@@ -151,6 +151,28 @@ def build_unshipped_order_shipment(
     )
 
 
+def build_unshipped_admin_order_shipment(order_summary: object) -> TrackingShipment:
+    now = datetime.now(timezone.utc).isoformat()
+    return TrackingShipment(
+        trackingNumber="",
+        carrierCode=None,
+        carrierName=None,
+        lastMileTrackingNumber=None,
+        normalizedStatus="unknown",
+        statusText="Not shipped yet",
+        providerStatus="Not shipped",
+        providerStatusDescription="This order has not been shipped yet.",
+        originCountry=None,
+        destinationCountry=None,
+        lastEventTime=None,
+        updatedAt=now,
+        supportNotice="This order has not been shipped yet.",
+        cached=False,
+        orderSummary=order_summary,
+        events=[],
+    )
+
+
 def query_tracking_numbers(
     client: SeventeenTrackClient,
     tracking_numbers: list[str],
@@ -421,6 +443,56 @@ def query_order_tracking(
                 message="That order number format is not valid. Please check it and try again.",
             )
         ]
+    admin_lookup = shopify_admin_client.lookup_order_by_name_and_email(
+        shop_domain,
+        normalized_order_number,
+        email,
+    )
+    if admin_lookup:
+        for tracking_ref in admin_lookup.tracking_numbers:
+            upsert_order_tracking_number(
+                tracking_number=tracking_ref.tracking_number,
+                carrier_code="",
+                shop_domain=shop_domain,
+                order_name=admin_lookup.order_summary.order_name,
+                source="shopify_admin",
+            )
+
+        if admin_lookup.shipment_pending:
+            shipment = build_unshipped_admin_order_shipment(admin_lookup.order_summary)
+            log_event(
+                "order_lookup_pending_shipment",
+                order_number=normalized_order_number,
+                email=email,
+                shop_domain=shop_domain,
+                order_name=admin_lookup.order_summary.order_name,
+                source="shopify_admin",
+            )
+            return [shipment], []
+
+        if admin_lookup.tracking_numbers:
+            primary_tracking = admin_lookup.tracking_numbers[0]
+            shipment, error = process_tracking_number(
+                client,
+                primary_tracking.tracking_number,
+                None,
+                shop_domain,
+                enforce_order_match=True,
+            )
+            shipments = [shipment] if shipment else []
+            errors = [error] if error else []
+            if errors:
+                send_alert(
+                    "order_lookup_failed",
+                    f"Order lookup failed for {normalized_order_number}",
+                    order_number=normalized_order_number,
+                    email=email,
+                    shop_domain=shop_domain,
+                    errors=[item.message for item in errors],
+                    source="shopify_admin",
+                )
+            return shipments, errors
+
     lookup = storefront_client.lookup_by_order(normalized_order_number, email, shop_domain)
     tracking_number = (lookup.tracking_params.get("num") if lookup else None) or None
     if lookup and lookup.shipment_pending:
@@ -431,6 +503,7 @@ def query_order_tracking(
             email=email,
             shop_domain=shop_domain,
             order_name=lookup.order_name,
+            source="17track_shopify",
         )
         return [shipment], []
 
@@ -440,6 +513,7 @@ def query_order_tracking(
             order_number=normalized_order_number,
             email=email,
             shop_domain=shop_domain,
+            admin_checked=bool(admin_lookup),
         )
         monitor_event_spike(
             source_events=("tracking_not_store_order", "order_lookup_not_found"),
@@ -475,6 +549,7 @@ def query_order_tracking(
             email=email,
             shop_domain=shop_domain,
             errors=[item.message for item in errors],
+            source="17track_shopify",
         )
     return shipments, errors
 

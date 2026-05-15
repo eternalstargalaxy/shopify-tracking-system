@@ -519,10 +519,12 @@ class CoreTests(unittest.TestCase):
         original_db_path = config_module.settings.database_path
         original_lookup_by_order = services_module.storefront_client.lookup_by_order
         original_detail_lookup = services_module.storefront_client.fetch_tracking_detail
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
         with workspace_temp_dir() as temp_dir:
             try:
                 object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
                 init_db()
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = lambda *_args, **_kwargs: None
                 services_module.storefront_client.lookup_by_order = lambda *_args, **_kwargs: FakeStorefrontLookup()
                 services_module.storefront_client.fetch_tracking_detail = (
                     lambda *_args, **_kwargs: {
@@ -578,6 +580,7 @@ class CoreTests(unittest.TestCase):
                 self.assertEqual(len(shipments[0].order_summary.items), 1)
             finally:
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
                 services_module.storefront_client.lookup_by_order = original_lookup_by_order
                 services_module.storefront_client.fetch_tracking_detail = original_detail_lookup
 
@@ -602,9 +605,11 @@ class CoreTests(unittest.TestCase):
         original_db_path = config_module.settings.database_path
         original_lookup_by_order = services_module.storefront_client.lookup_by_order
         original_admin_token = services_module.shopify_admin_client.access_token
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
         with workspace_temp_dir() as temp_dir:
             try:
                 object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = lambda *_args, **_kwargs: None
                 services_module.storefront_client.lookup_by_order = lambda *_args, **_kwargs: FakeStorefrontLookup()
                 services_module.shopify_admin_client.access_token = ""
                 init_db()
@@ -622,8 +627,119 @@ class CoreTests(unittest.TestCase):
                 self.assertEqual(shipments[0].order_summary.order_name, "LUK3999")
             finally:
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
                 services_module.storefront_client.lookup_by_order = original_lookup_by_order
                 services_module.shopify_admin_client.access_token = original_admin_token
+
+    def test_query_order_tracking_prefers_shopify_admin_lookup_with_tracking(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "4PX",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        admin_lookup = shopify_admin_module.ShopifyOrderLookup(
+            order_summary=OrderSummary(orderName="LC8100320", fulfillmentStatus="Fulfilled", source="shopify_admin"),
+            tracking_numbers=[
+                shopify_admin_module.ShopifyTrackingReference(
+                    tracking_number="4PX3001999027341CN",
+                    carrier_name="4PX",
+                )
+            ],
+            shipment_pending=False,
+        )
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = (
+                    lambda *_args, **_kwargs: admin_lookup
+                )
+                services_module.storefront_client.lookup_by_order = (
+                    lambda *_args, **_kwargs: self.fail("storefront order lookup should not run when Shopify Admin already matched")
+                )
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LC8100320",
+                    "demo@example.com",
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual(len(shipments), 1)
+                self.assertEqual(shipments[0].tracking_number, "4PX3001999027341CN")
+                self.assertTrue(
+                    is_store_order_tracking_number(
+                        "4PX3001999027341CN",
+                        None,
+                        "demo.myshopify.com",
+                    )
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
+
+    def test_query_order_tracking_returns_unshipped_shopify_admin_order(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.fail("register should not be called for an unshipped Shopify order")
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.fail("get_track_info should not be called for an unshipped Shopify order")
+
+        admin_lookup = shopify_admin_module.ShopifyOrderLookup(
+            order_summary=OrderSummary(orderName="LC999999", fulfillmentStatus="Unfulfilled", source="shopify_admin"),
+            tracking_numbers=[],
+            shipment_pending=True,
+        )
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = (
+                    lambda *_args, **_kwargs: admin_lookup
+                )
+                services_module.storefront_client.lookup_by_order = (
+                    lambda *_args, **_kwargs: self.fail("storefront order lookup should not run when Shopify Admin marked order unshipped")
+                )
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LC999999",
+                    "demo@example.com",
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual(len(shipments), 1)
+                self.assertEqual(shipments[0].tracking_number, "")
+                self.assertEqual(shipments[0].status_text, "Not shipped yet")
+                self.assertEqual(shipments[0].order_summary.order_name, "LC999999")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
 
     def test_process_tracking_number_refreshes_empty_unknown_cache_without_fc(self) -> None:
         class FakeClient:
@@ -805,7 +921,9 @@ class CoreTests(unittest.TestCase):
 
     def test_shopify_admin_order_summary_keeps_images_and_prices(self) -> None:
         order = {
+            "id": "gid://shopify/Order/123456789",
             "name": "LUK2781",
+            "email": "demo@example.com",
             "processedAt": "2026-05-06T12:33:00Z",
             "displayFulfillmentStatus": "FULFILLED",
             "displayFinancialStatus": "PAID",
@@ -832,6 +950,28 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(summary.items[0].variant, "Rosa / S")
         self.assertEqual(summary.items[0].image_url, "https://example.com/elara.jpg")
         self.assertEqual(summary.items[0].unit_price, "57.51 GBP")
+
+    def test_shopify_admin_extracts_tracking_references_from_fulfillments(self) -> None:
+        references = shopify_admin_module._extract_tracking_references(
+            {
+                "fulfillments": [
+                    {
+                        "tracking_company": "4PX",
+                        "tracking_number": "4PX3001999027341CN",
+                        "tracking_numbers": ["4PX3001999027341CN", "  "],
+                    },
+                    {
+                        "tracking_company": "YunExpress",
+                        "tracking_numbers": ["YT2613500705594269"],
+                    },
+                ]
+            }
+        )
+        self.assertEqual(
+            [item.tracking_number for item in references],
+            ["4PX3001999027341CN", "YT2613500705594269"],
+        )
+        self.assertEqual(references[0].carrier_name, "4PX")
 
     def test_normalize_known_main_status(self) -> None:
         self.assertEqual(normalize_status("Delivered", None, None), "delivered")
