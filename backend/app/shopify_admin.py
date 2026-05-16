@@ -289,7 +289,7 @@ class ShopifyAdminClient:
                 records.append(
                     ShopifyOrderRecord(
                         order_name=order_name,
-                        fulfillment_status=_format_admin_status(order.get("displayFulfillmentStatus")),
+                        fulfillment_status=_format_admin_status(order.get("fulfillment_status")),
                         tracking_numbers=extract_tracking_references(order),
                     )
                 )
@@ -375,7 +375,7 @@ class ShopifyAdminClient:
         params: dict[str, Any] = {
             "status": "any",
             "limit": max(1, min(limit, 250)),
-            "fields": "id,name,displayFulfillmentStatus,fulfillments",
+            "fields": "id,name,fulfillment_status,fulfillments",
         }
         if page_info:
             params["page_info"] = page_info
