@@ -1,0 +1,27 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "21c6e684594b25930408a75bfa35c012"
+name = "LINTICO Tracking App"
+application_url = "https://track.n8n-julang-tech-dev.com/health"
+embedded = false
+
+[webhooks]
+api_version = "2026-04"
+
+[[webhooks.subscriptions]]
+topics = ["orders/create", "orders/updated", "fulfillments/create", "fulfillments/update"]
+uri = "https://track.n8n-julang-tech-dev.com/api/shopify/webhooks"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,read_fulfillments"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ ]
+
+[app_proxy]
+url = "https://track.n8n-julang-tech-dev.com"
+subpath = "track"
+prefix = "apps"

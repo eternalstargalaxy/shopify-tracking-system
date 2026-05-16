@@ -1182,6 +1182,15 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(references[0].carrier_name, "4PX")
 
+    def test_shopify_admin_extracts_next_page_info_from_link_header(self) -> None:
+        self.assertEqual(
+            shopify_admin_module._extract_next_page_info(
+                '<https://demo.myshopify.com/admin/api/2026-04/orders.json?page_info=abc123&limit=250>; rel="next", '
+                '<https://demo.myshopify.com/admin/api/2026-04/orders.json?page_info=zzz999&limit=250>; rel="previous"'
+            ),
+            "abc123",
+        )
+
     def test_shopify_admin_matches_order_identity_with_optional_hash_prefix(self) -> None:
         order = {
             "name": "#LFR1112",

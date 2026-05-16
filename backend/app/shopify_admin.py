@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -60,6 +60,12 @@ class ShopifyOrderLookup:
     order_summary: OrderSummary
     tracking_numbers: list[ShopifyTrackingReference]
     shipment_pending: bool
+
+
+@dataclass(frozen=True)
+class ShopifyOrderTrackingMapping:
+    order_name: str
+    tracking_numbers: list[ShopifyTrackingReference]
 
 
 class ShopifyAdminClient:
@@ -194,6 +200,54 @@ class ShopifyAdminClient:
             )
         return None
 
+    def iter_order_tracking_mappings(
+        self,
+        shop_domain: str | None,
+        *,
+        updated_at_min: str | None = None,
+        limit: int = 250,
+        max_pages: int | None = None,
+    ) -> list[ShopifyOrderTrackingMapping]:
+        if not self.enabled or not shop_domain:
+            return []
+
+        access_token = self._get_access_token(shop_domain)
+        if not access_token:
+            return []
+
+        page_info: str | None = None
+        page_count = 0
+        mappings: list[ShopifyOrderTrackingMapping] = []
+
+        while True:
+            orders, next_page_info = self._fetch_orders_page(
+                shop_domain,
+                access_token,
+                page_info=page_info,
+                updated_at_min=updated_at_min,
+                limit=limit,
+            )
+            for order in orders:
+                order_name = str(order.get("name") or "").strip()
+                if not order_name:
+                    continue
+                tracking_numbers = extract_tracking_references(order)
+                if not tracking_numbers:
+                    continue
+                mappings.append(
+                    ShopifyOrderTrackingMapping(
+                        order_name=order_name,
+                        tracking_numbers=tracking_numbers,
+                    )
+                )
+
+            page_count += 1
+            if not next_page_info or (max_pages and page_count >= max_pages):
+                break
+            page_info = next_page_info
+
+        return mappings
+
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
             return self.access_token
@@ -255,6 +309,52 @@ class ShopifyAdminClient:
         if not parsed or parsed.get("errors"):
             return []
         return (((parsed.get("data") or {}).get("orders") or {}).get("nodes") or [])
+
+    def _fetch_orders_page(
+        self,
+        shop_domain: str,
+        access_token: str,
+        *,
+        page_info: str | None = None,
+        updated_at_min: str | None = None,
+        limit: int = 250,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        params: dict[str, Any] = {
+            "status": "any",
+            "limit": max(1, min(limit, 250)),
+            "fields": "id,name,fulfillments",
+        }
+        if page_info:
+            params["page_info"] = page_info
+        elif updated_at_min:
+            params["updated_at_min"] = updated_at_min
+            params["order"] = "updated_at asc"
+
+        request = Request(
+            url=(
+                f"https://{shop_domain}/admin/api/{self.api_version}/orders.json"
+                f"?{urlencode(params)}"
+            ),
+            headers={
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": access_token,
+            },
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                raw = response.read().decode("utf-8")
+                link_header = response.headers.get("Link")
+        except (HTTPError, URLError, TimeoutError):
+            return [], None
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [], None
+
+        orders = parsed.get("orders") or []
+        return orders, _extract_next_page_info(link_header)
 
     def _post_graphql(
         self,
@@ -322,7 +422,7 @@ class ShopifyAdminClient:
             with urlopen(request, timeout=10) as response:
                 raw = response.read().decode("utf-8")
         except (HTTPError, URLError, TimeoutError):
-            return []
+            return None
 
         try:
             parsed = json.loads(raw)
@@ -499,6 +599,24 @@ def _extract_tracking_references(order: dict[str, Any]) -> list[ShopifyTrackingR
 
 def extract_tracking_references(order: dict[str, Any]) -> list[ShopifyTrackingReference]:
     return _extract_tracking_references(order)
+
+
+def _extract_next_page_info(link_header: str | None) -> str | None:
+    if not link_header:
+        return None
+    for part in link_header.split(","):
+        section = part.strip()
+        if 'rel="next"' not in section:
+            continue
+        start = section.find("<")
+        end = section.find(">")
+        if start == -1 or end == -1 or end <= start + 1:
+            continue
+        parsed = urlparse(section[start + 1 : end])
+        page_info = parse_qs(parsed.query).get("page_info", [None])[0]
+        if page_info:
+            return page_info
+    return None
 
 
 def _looks_unshipped(fulfillment_status: str | None) -> bool:

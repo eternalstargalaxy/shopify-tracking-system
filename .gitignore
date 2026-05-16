@@ -19,8 +19,11 @@ backend/data/*.sqlite3-*
 .ruff_cache/
 
 node_modules/
+.tools/
 dist/
 build/
+
+sampled_orders_50_v2_check.json
 
 .DS_Store
 Thumbs.db
