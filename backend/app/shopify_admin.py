@@ -68,6 +68,13 @@ class ShopifyOrderTrackingMapping:
     tracking_numbers: list[ShopifyTrackingReference]
 
 
+@dataclass(frozen=True)
+class ShopifyOrderRecord:
+    order_name: str
+    fulfillment_status: str | None
+    tracking_numbers: list[ShopifyTrackingReference]
+
+
 class ShopifyAdminClient:
     def __init__(
         self,
@@ -248,6 +255,52 @@ class ShopifyAdminClient:
 
         return mappings
 
+    def iter_orders(
+        self,
+        shop_domain: str | None,
+        *,
+        updated_at_min: str | None = None,
+        limit: int = 250,
+        max_pages: int | None = None,
+    ) -> list[ShopifyOrderRecord]:
+        if not self.enabled or not shop_domain:
+            return []
+
+        access_token = self._get_access_token(shop_domain)
+        if not access_token:
+            return []
+
+        page_info: str | None = None
+        page_count = 0
+        records: list[ShopifyOrderRecord] = []
+
+        while True:
+            orders, next_page_info = self._fetch_orders_page(
+                shop_domain,
+                access_token,
+                page_info=page_info,
+                updated_at_min=updated_at_min,
+                limit=limit,
+            )
+            for order in orders:
+                order_name = str(order.get("name") or "").strip()
+                if not order_name:
+                    continue
+                records.append(
+                    ShopifyOrderRecord(
+                        order_name=order_name,
+                        fulfillment_status=_format_admin_status(order.get("displayFulfillmentStatus")),
+                        tracking_numbers=extract_tracking_references(order),
+                    )
+                )
+
+            page_count += 1
+            if not next_page_info or (max_pages and page_count >= max_pages):
+                break
+            page_info = next_page_info
+
+        return records
+
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
             return self.access_token
@@ -322,7 +375,7 @@ class ShopifyAdminClient:
         params: dict[str, Any] = {
             "status": "any",
             "limit": max(1, min(limit, 250)),
-            "fields": "id,name,fulfillments",
+            "fields": "id,name,displayFulfillmentStatus,fulfillments",
         }
         if page_info:
             params["page_info"] = page_info
