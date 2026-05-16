@@ -25,6 +25,7 @@ from .schemas import (
 from .services import get_recent_shipments, parse_tracking_numbers, query_order_tracking, query_tracking_numbers
 from .seventeen_track import SeventeenTrackClient
 from .shopify_proxy import verify_proxy_request
+from .shopify_webhooks import parse_webhook_payload, sync_tracking_mappings_from_webhook, verify_webhook_request
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -99,6 +100,15 @@ async def request_logging_middleware(request: Request, call_next):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/shopify/webhooks")
+async def shopify_webhook(request: Request) -> dict[str, object]:
+    raw_body = await request.body()
+    shop_domain, topic = verify_webhook_request(request, raw_body)
+    payload = parse_webhook_payload(raw_body)
+    result = sync_tracking_mappings_from_webhook(topic, shop_domain, payload)
+    return {"ok": True, **result}
 
 
 @app.get("/api/track", response_model=TrackResponse)

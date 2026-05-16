@@ -288,14 +288,33 @@ class ShopifyAdminClient:
         access_token: str,
         order_id: str,
     ) -> list[ShopifyTrackingReference]:
+        order = self.fetch_order_payload(shop_domain, order_id, access_token=access_token)
+        if not order:
+            return []
+        return extract_tracking_references(order)
+
+    def fetch_order_payload(
+        self,
+        shop_domain: str | None,
+        order_id: str | int | None,
+        *,
+        access_token: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not self.enabled or not shop_domain or not order_id:
+            return None
+
+        token = access_token or self._get_access_token(shop_domain)
+        if not token:
+            return None
+
         request = Request(
             url=(
                 f"https://{shop_domain}/admin/api/{self.api_version}/orders/{order_id}.json"
-                "?fields=id,name,email,fulfillments"
+                "?fields=id,name,email,fulfillments,displayFulfillmentStatus,displayFinancialStatus,currentTotalPriceSet,line_items"
             ),
             headers={
                 "Content-Type": "application/json",
-                "X-Shopify-Access-Token": access_token,
+                "X-Shopify-Access-Token": token,
             },
             method="GET",
         )
@@ -308,10 +327,9 @@ class ShopifyAdminClient:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            return []
+            return None
 
-        order = parsed.get("order") or {}
-        return _extract_tracking_references(order)
+        return parsed.get("order") or None
 
 
 def build_local_order_summary(row: Any) -> OrderSummary | None:
@@ -477,6 +495,10 @@ def _extract_tracking_references(order: dict[str, Any]) -> list[ShopifyTrackingR
                 )
             )
     return references
+
+
+def extract_tracking_references(order: dict[str, Any]) -> list[ShopifyTrackingReference]:
+    return _extract_tracking_references(order)
 
 
 def _looks_unshipped(fulfillment_status: str | None) -> bool:

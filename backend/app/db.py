@@ -449,6 +449,65 @@ def consume_rate_limit(bucket_type: str, bucket_key: str, window_start: int) -> 
         conn.close()
 
 
+def replace_order_tracking_numbers_for_order_name(
+    shop_domain: str | None,
+    order_name: str | None,
+    tracking_numbers: list[str],
+    *,
+    source: str = "shopify_webhook",
+) -> int:
+    shop_key = shop_domain or ""
+    normalized_order_name = (order_name or "").strip()
+    if not normalized_order_name:
+        return 0
+
+    deduped_tracking_numbers: list[str] = []
+    seen: set[str] = set()
+    for value in tracking_numbers:
+        normalized = str(value or "").strip().upper()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped_tracking_numbers.append(normalized)
+
+    conn = get_connection()
+    now = _now_iso()
+    try:
+        conn.execute(
+            """
+            DELETE FROM order_tracking_numbers
+            WHERE shop_domain = ? AND order_name = ?
+            """,
+            (shop_key, normalized_order_name),
+        )
+        for tracking_number in deduped_tracking_numbers:
+            conn.execute(
+                """
+                INSERT INTO order_tracking_numbers (
+                    shop_domain,
+                    order_name,
+                    tracking_number,
+                    carrier_code,
+                    source,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, '', ?, ?, ?)
+                """,
+                (
+                    shop_key,
+                    normalized_order_name,
+                    tracking_number,
+                    source,
+                    now,
+                    now,
+                ),
+            )
+        conn.commit()
+        return len(deduped_tracking_numbers)
+    finally:
+        conn.close()
+
+
 def insert_system_event(
     event: str,
     level: str,

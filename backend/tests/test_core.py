@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import hashlib
 import hmac
 import shutil
@@ -18,6 +20,7 @@ from backend.app.db import (
     fetch_tracking_record,
     init_db,
     is_store_order_tracking_number,
+    list_order_tracking_numbers_for_order_names,
     summarize_daily_usage,
     upsert_order_tracking_number,
     upsert_tracking_record,
@@ -33,6 +36,7 @@ from backend.app.seventeen_track import parse_track_info
 from backend.app import seventeen_track_storefront as storefront_module
 from backend.app import services as services_module
 from backend.app import shopify_admin as shopify_admin_module
+from backend.app import shopify_webhooks as webhooks_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
 from backend.tools.import_order_trackings import (
     _normalize_header,
@@ -1207,6 +1211,130 @@ class CoreTests(unittest.TestCase):
         message = "logged_in_customer_id=shop=demo.myshopify.comtimestamp=1700000000"
         signature = hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
         self.assertEqual(len(signature), 64)
+
+    def test_sync_tracking_mappings_from_order_webhook_replaces_existing_rows(self) -> None:
+        original_db_path = config_module.settings.database_path
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                upsert_order_tracking_number(
+                    tracking_number="OLD123456789CN",
+                    carrier_code="",
+                    shop_domain="demo.myshopify.com",
+                    order_name="#1001",
+                    source="manual",
+                )
+                result = webhooks_module.sync_tracking_mappings_from_webhook(
+                    "orders/updated",
+                    "demo.myshopify.com",
+                    {
+                        "name": "#1001",
+                        "fulfillments": [
+                            {
+                                "tracking_company": "4PX",
+                                "tracking_numbers": [
+                                    "4PX3001999027341CN",
+                                    "YT2613500705594269",
+                                ],
+                            }
+                        ],
+                    },
+                )
+                self.assertEqual(result["syncedCount"], 2)
+                rows = list_order_tracking_numbers_for_order_names(
+                    "demo.myshopify.com",
+                    ["#1001"],
+                )
+                self.assertEqual(
+                    sorted(row["tracking_number"] for row in rows),
+                    ["4PX3001999027341CN", "YT2613500705594269"],
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+
+    def test_sync_tracking_mappings_from_fulfillment_webhook_fetches_order_payload(self) -> None:
+        original_db_path = config_module.settings.database_path
+        original_fetch = webhooks_module.shopify_admin_client.fetch_order_payload
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                webhooks_module.shopify_admin_client.fetch_order_payload = lambda *_args, **_kwargs: {
+                    "name": "LC8152308",
+                    "fulfillments": [
+                        {
+                            "tracking_numbers": [
+                                "YT2611001002223456",
+                                "YT2611001002216716",
+                            ]
+                        }
+                    ],
+                }
+                result = webhooks_module.sync_tracking_mappings_from_webhook(
+                    "fulfillments/create",
+                    "demo.myshopify.com",
+                    {"order_id": 123456789},
+                )
+                self.assertEqual(result["syncedCount"], 2)
+                rows = list_order_tracking_numbers_for_order_names(
+                    "demo.myshopify.com",
+                    ["LC8152308"],
+                )
+                self.assertEqual(len(rows), 2)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                webhooks_module.shopify_admin_client.fetch_order_payload = original_fetch
+
+    def test_shopify_webhook_endpoint_verifies_signature_and_syncs_rows(self) -> None:
+        original_db_path = config_module.settings.database_path
+        original_secret = config_module.settings.shopify_app_secret
+        original_allowed = config_module.settings.allowed_shop_domains
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                object.__setattr__(config_module.settings, "shopify_app_secret", "shpss_test_secret")
+                object.__setattr__(config_module.settings, "allowed_shop_domains", ("demo.myshopify.com",))
+                init_db()
+                payload = {
+                    "name": "#1002",
+                    "fulfillments": [
+                        {
+                            "tracking_numbers": ["YT2603300702516080"],
+                        }
+                    ],
+                }
+                raw = json.dumps(payload).encode("utf-8")
+                signature = base64.b64encode(
+                    hmac.new(
+                        b"shpss_test_secret",
+                        raw,
+                        hashlib.sha256,
+                    ).digest()
+                ).decode("utf-8")
+                with TestClient(main_module.app) as client:
+                    response = client.post(
+                        "/api/shopify/webhooks",
+                        content=raw,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Shopify-Topic": "orders/updated",
+                            "X-Shopify-Shop-Domain": "demo.myshopify.com",
+                            "X-Shopify-Hmac-Sha256": signature,
+                        },
+                    )
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(
+                    is_store_order_tracking_number(
+                        "YT2603300702516080",
+                        None,
+                        "demo.myshopify.com",
+                    )
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "shopify_app_secret", original_secret)
+                object.__setattr__(config_module.settings, "allowed_shop_domains", original_allowed)
 
     def test_parse_track_info_casts_numeric_carrier(self) -> None:
         parsed = parse_track_info(
