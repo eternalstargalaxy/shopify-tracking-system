@@ -5,6 +5,7 @@ import hmac
 import shutil
 import unittest
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -33,6 +34,12 @@ from backend.app import seventeen_track_storefront as storefront_module
 from backend.app import services as services_module
 from backend.app import shopify_admin as shopify_admin_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
+from backend.tools.import_order_trackings import (
+    _normalize_header,
+    _pick_column,
+    _should_use_positional_fallback,
+    _split_tracking_values,
+)
 from backend.app.services import (
     is_valid_order_number,
     parse_tracking_numbers,
@@ -712,6 +719,124 @@ class CoreTests(unittest.TestCase):
                 services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
                 services_module.storefront_client.lookup_by_order = original_lookup_by_order
 
+    def test_process_tracking_number_uses_shopify_admin_lookup_for_store_ownership(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "190008",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        admin_lookup = shopify_admin_module.ShopifyOrderLookup(
+            order_summary=OrderSummary(orderName="LC8124076", fulfillmentStatus="Fulfilled", source="shopify_admin"),
+            tracking_numbers=[
+                shopify_admin_module.ShopifyTrackingReference(
+                    tracking_number="YT2603300702516080",
+                    carrier_name="YunExpress",
+                )
+            ],
+            shipment_pending=False,
+        )
+
+        original_db_path = config_module.settings.database_path
+        original_storefront_lookup = services_module.storefront_client.lookup_by_tracking
+        original_admin_tracking_lookup = services_module.shopify_admin_client.lookup_order_by_tracking_number
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                services_module.storefront_client.lookup_by_tracking = lambda *_args, **_kwargs: None
+                services_module.shopify_admin_client.lookup_order_by_tracking_number = (
+                    lambda *_args, **_kwargs: admin_lookup
+                )
+                shipment, error = process_tracking_number(
+                    FakeClient(),
+                    "YT2603300702516080",
+                    None,
+                    "demo.myshopify.com",
+                    enforce_order_match=True,
+                )
+                self.assertIsNone(error)
+                self.assertIsNotNone(shipment)
+                self.assertEqual(shipment.tracking_number, "YT2603300702516080")
+                self.assertTrue(
+                    is_store_order_tracking_number(
+                        "YT2603300702516080",
+                        None,
+                        "demo.myshopify.com",
+                    )
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_tracking = original_storefront_lookup
+                services_module.shopify_admin_client.lookup_order_by_tracking_number = original_admin_tracking_lookup
+
+    def test_query_order_tracking_falls_back_to_local_mapping(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "auto",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                upsert_order_tracking_number(
+                    tracking_number="YT2602700701984711",
+                    carrier_code="",
+                    shop_domain="demo.myshopify.com",
+                    order_name="LFR1112",
+                    source="historical_import",
+                )
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = lambda *_args, **_kwargs: None
+                services_module.storefront_client.lookup_by_order = lambda *_args, **_kwargs: None
+
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LFR1112",
+                    None,
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual([shipment.tracking_number for shipment in shipments], ["YT2602700701984711"])
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
+
     def test_query_order_tracking_appends_unshipped_remainder_for_split_fulfillment(self) -> None:
         class FakeClient:
             def register(self, tracking_number: str, carrier_code: str | None) -> dict:
@@ -1053,6 +1178,26 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(references[0].carrier_name, "4PX")
 
+    def test_shopify_admin_matches_order_identity_with_optional_hash_prefix(self) -> None:
+        order = {
+            "name": "#LFR1112",
+            "email": "nm.clement@orange.fr",
+        }
+        self.assertTrue(
+            shopify_admin_module._matches_order_identity(
+                order,
+                "LFR1112",
+                "nm.clement@orange.fr",
+            )
+        )
+        self.assertTrue(
+            shopify_admin_module._matches_order_identity(
+                order,
+                "#LFR1112",
+                "nm.clement@orange.fr",
+            )
+        )
+
     def test_normalize_known_main_status(self) -> None:
         self.assertEqual(normalize_status("Delivered", None, None), "delivered")
         self.assertEqual(status_label("delivered"), "Delivered")
@@ -1192,6 +1337,18 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(parsed["status_text"], "No tracking updates yet")
         self.assertEqual(parsed["destination_country"], "GB")
 
+    def test_import_tool_header_helpers_support_sampled_order_csv(self) -> None:
+        fieldnames = ["???", "??", "???", "????"]
+        self.assertEqual(_normalize_header("Tracking Number"), "trackingnumber")
+        self.assertEqual(_pick_column(fieldnames, {"tracking_number"}, fallback_index=2), "???")
+        self.assertEqual(_pick_column(fieldnames, {"order_number"}, fallback_index=0), "???")
+        self.assertTrue(_should_use_positional_fallback(fieldnames))
+        self.assertFalse(_should_use_positional_fallback(["order_number", "email", "tracking_number", "created_at"]))
+        self.assertEqual(
+            list(_split_tracking_values("YT2603300702516080; YT2610501001696199\r\n4PX3001999027341CN")),
+            ["YT2603300702516080", "YT2610501001696199", "4PX3001999027341CN"],
+        )
+
     def test_summarize_daily_usage_and_report(self) -> None:
         original_db_path = config_module.settings.database_path
         original_url = config_module.settings.alert_webhook_url
@@ -1200,6 +1357,7 @@ class CoreTests(unittest.TestCase):
                 object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
                 object.__setattr__(config_module.settings, "alert_webhook_url", "")
                 init_db()
+                now = datetime.now(timezone.utc)
                 upsert_tracking_record(
                     {
                         "tracking_number": "RJ556381428CN",
@@ -1214,8 +1372,8 @@ class CoreTests(unittest.TestCase):
                         "origin_country": "CN",
                         "destination_country": "GB",
                         "last_event_time": "2026-05-06T08:00:00+00:00",
-                        "last_fetched_at": "2026-05-15T08:10:00+00:00",
-                        "cache_expires_at": "2026-05-15T10:10:00+00:00",
+                        "last_fetched_at": now.isoformat(),
+                        "cache_expires_at": now.isoformat(),
                         "events": [],
                         "raw_response": {},
                     }

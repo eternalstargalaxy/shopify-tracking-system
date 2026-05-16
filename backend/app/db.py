@@ -333,6 +333,32 @@ def fetch_order_tracking_match(
         conn.close()
 
 
+def list_order_tracking_numbers_for_order_names(
+    shop_domain: str | None,
+    order_names: list[str],
+) -> list[sqlite3.Row]:
+    cleaned = [name.strip() for name in order_names if name and name.strip()]
+    if not cleaned:
+        return []
+    placeholders = ", ".join("?" for _ in cleaned)
+    conn = get_connection()
+    try:
+        return conn.execute(
+            f"""
+            SELECT *
+            FROM order_tracking_numbers
+            WHERE order_name IN ({placeholders})
+              AND (shop_domain = ? OR shop_domain IS NULL OR shop_domain = '')
+            ORDER BY
+              CASE WHEN shop_domain = ? THEN 0 ELSE 1 END,
+              updated_at DESC
+            """,
+            (*cleaned, shop_domain or "", shop_domain or ""),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def upsert_order_tracking_number(
     tracking_number: str,
     carrier_code: str | None = None,

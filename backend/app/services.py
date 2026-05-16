@@ -9,6 +9,7 @@ from .db import (
     fetch_order_tracking_match,
     fetch_tracking_record,
     is_store_order_tracking_number,
+    list_order_tracking_numbers_for_order_names,
     list_recent_tracking_records,
     upsert_order_tracking_number,
     upsert_tracking_record,
@@ -45,6 +46,24 @@ def normalize_order_number(raw_value: str) -> str:
 
 def is_valid_order_number(raw_value: str) -> bool:
     return bool(ORDER_NUMBER_PATTERN.match(normalize_order_number(raw_value)))
+
+
+def _order_number_candidates(raw_value: str) -> list[str]:
+    normalized = normalize_order_number(raw_value)
+    if not normalized:
+        return []
+    variants = [normalized]
+    if normalized.startswith("#"):
+        variants.append(normalized[1:])
+    else:
+        variants.append(f"#{normalized}")
+    deduped: list[str] = []
+    seen = set()
+    for variant in variants:
+        if variant and variant not in seen:
+            seen.add(variant)
+            deduped.append(variant)
+    return deduped
 
 
 def record_is_fresh(record: dict | None, now: datetime | None = None) -> bool:
@@ -264,6 +283,7 @@ def process_tracking_number(
 ) -> tuple[TrackingShipment | None, QueryError | None]:
     record = fetch_tracking_record(tracking_number, carrier_code)
     storefront_lookup = storefront_lookup_override or storefront_client.lookup_by_tracking(tracking_number, shop_domain)
+    admin_tracking_lookup = None
     resolved_carrier_code = (
         carrier_code
         or (storefront_lookup.carrier_code if storefront_lookup else None)
@@ -288,6 +308,22 @@ def process_tracking_number(
             shop_domain,
         )
         store_match = True
+
+    if should_enforce_order_match and not store_match and shop_domain:
+        admin_tracking_lookup = shopify_admin_client.lookup_order_by_tracking_number(
+            shop_domain,
+            tracking_number,
+        )
+        if admin_tracking_lookup:
+            for tracking_ref in admin_tracking_lookup.tracking_numbers:
+                upsert_order_tracking_number(
+                    tracking_number=tracking_ref.tracking_number,
+                    carrier_code="",
+                    shop_domain=shop_domain,
+                    order_name=admin_tracking_lookup.order_summary.order_name,
+                    source="shopify_admin",
+                )
+            store_match = True
 
     if storefront_lookup and not storefront_lookup.tracking_params.get("fc") and storefront_lookup.order_name:
         log_event(
@@ -504,7 +540,34 @@ def query_order_tracking(
                     shop_domain=shop_domain,
                     errors=[item.message for item in errors],
                     source="shopify_admin",
-                )
+            )
+            return shipments, errors
+
+    local_order_rows = list_order_tracking_numbers_for_order_names(
+        shop_domain,
+        _order_number_candidates(normalized_order_number),
+    )
+    if local_order_rows:
+        shipments: list[TrackingShipment] = []
+        errors: list[QueryError] = []
+        seen_tracking_numbers: set[str] = set()
+        for row in local_order_rows:
+            tracking_number = (row["tracking_number"] or "").strip().upper()
+            if not tracking_number or tracking_number in seen_tracking_numbers:
+                continue
+            seen_tracking_numbers.add(tracking_number)
+            shipment, error = process_tracking_number(
+                client,
+                tracking_number,
+                row["carrier_code"],
+                shop_domain,
+                enforce_order_match=True,
+            )
+            if shipment:
+                shipments.append(shipment)
+            if error:
+                errors.append(error)
+        if shipments or errors:
             return shipments, errors
 
     lookup = storefront_client.lookup_by_order(normalized_order_number, normalized_email or "", shop_domain) if normalized_email else None

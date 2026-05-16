@@ -84,10 +84,20 @@ class ShopifyAdminClient:
         if not self.enabled or not shop_domain or not order_name:
             return None
 
-        orders = self._search_orders(shop_domain, f'name:"{order_name}"')
-        if not orders:
-            return None
-        return _parse_order_summary(orders[0])
+        normalized_order_name = (order_name or "").strip().upper()
+        for query in _build_order_queries(normalized_order_name, None):
+            orders = self._search_orders(shop_domain, query)
+            matched = next(
+                (
+                    order
+                    for order in orders
+                    if _matches_order_identity(order, normalized_order_name, None)
+                ),
+                None,
+            )
+            if matched:
+                return _parse_order_summary(matched)
+        return None
 
     def lookup_order_by_name(
         self,
@@ -100,21 +110,19 @@ class ShopifyAdminClient:
 
         normalized_order_name = (order_name or "").strip().upper()
         normalized_email = (email or "").strip().lower()
-        query = f'name:"{normalized_order_name}"'
-        if normalized_email:
-            query = f'{query} AND email:{normalized_email}'
-        orders = self._search_orders(shop_domain, query)
-        if not orders:
-            return None
-
-        matched = next(
-            (
-                order
-                for order in orders
-                if _matches_order_identity(order, normalized_order_name, normalized_email)
-            ),
-            None,
-        )
+        matched = None
+        for query in _build_order_queries(normalized_order_name, normalized_email):
+            orders = self._search_orders(shop_domain, query)
+            matched = next(
+                (
+                    order
+                    for order in orders
+                    if _matches_order_identity(order, normalized_order_name, normalized_email)
+                ),
+                None,
+            )
+            if matched:
+                break
         if not matched:
             return None
 
@@ -143,6 +151,48 @@ class ShopifyAdminClient:
         email: str | None,
     ) -> ShopifyOrderLookup | None:
         return self.lookup_order_by_name(shop_domain, order_name, email)
+
+    def lookup_order_by_tracking_number(
+        self,
+        shop_domain: str | None,
+        tracking_number: str | None,
+    ) -> ShopifyOrderLookup | None:
+        if not self.enabled or not shop_domain or not tracking_number:
+            return None
+
+        normalized_tracking_number = str(tracking_number or "").strip().upper()
+        if not normalized_tracking_number:
+            return None
+
+        orders = self._search_orders(shop_domain, normalized_tracking_number)
+        if not orders:
+            return None
+
+        access_token = self._get_access_token(shop_domain)
+        if not access_token:
+            return None
+
+        for order in orders:
+            order_id = _extract_numeric_order_id(order.get("id"))
+            if not order_id:
+                continue
+            tracking_references = self._fetch_tracking_references(
+                shop_domain,
+                access_token,
+                order_id,
+            )
+            if not any(
+                reference.tracking_number == normalized_tracking_number
+                for reference in tracking_references
+            ):
+                continue
+            order_summary = _parse_order_summary(order)
+            return ShopifyOrderLookup(
+                order_summary=order_summary,
+                tracking_numbers=tracking_references,
+                shipment_pending=not tracking_references and _looks_unshipped(order_summary.fulfillment_status),
+            )
+        return None
 
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
@@ -353,10 +403,40 @@ def _merge_items(primary_items: list[OrderSummaryItem], fallback_items: list[Ord
     return primary_items
 
 
+def _normalize_order_identity(value: str | None) -> str:
+    return str(value or "").strip().upper().lstrip("#")
+
+
+def _build_order_queries(order_name: str, email: str | None) -> list[str]:
+    normalized = (order_name or "").strip().upper()
+    if not normalized:
+        return []
+    variants = [normalized]
+    if normalized.startswith("#"):
+        variants.append(normalized.lstrip("#"))
+    else:
+        variants.append(f"#{normalized}")
+    queries: list[str] = []
+    seen: set[str] = set()
+    for variant in variants:
+        for query in (
+            f'name:"{variant}"',
+            variant,
+        ):
+            if email:
+                query = f"{query} AND email:{email}"
+            if query in seen:
+                continue
+            seen.add(query)
+            queries.append(query)
+    return queries
+
+
 def _matches_order_identity(order: dict[str, Any], order_name: str, email: str | None) -> bool:
-    candidate_name = str(order.get("name") or "").strip().upper()
+    candidate_name = _normalize_order_identity(order.get("name"))
+    target_name = _normalize_order_identity(order_name)
     candidate_email = str(order.get("email") or "").strip().lower()
-    if candidate_name != order_name:
+    if candidate_name != target_name:
         return False
     if email:
         return candidate_email == email
