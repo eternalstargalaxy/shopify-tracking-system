@@ -17,6 +17,7 @@ from .observability import log_event, send_alert, send_daily_usage_report
 from .rate_limit import enforce_ip_limits
 from .schemas import (
     DailyUsageSummaryResponse,
+    InternalOrderTrackRequest,
     InternalTrackRequest,
     OpsSummaryResponse,
     RecentShipmentsResponse,
@@ -252,7 +253,7 @@ def internal_track(request: Request, payload: InternalTrackRequest) -> TrackResp
         client,
         tracking_numbers,
         payload.carrier,
-        None,
+        payload.shop_domain,
         enforce_order_match=False,
     )
     return TrackResponse(
@@ -260,6 +261,28 @@ def internal_track(request: Request, payload: InternalTrackRequest) -> TrackResp
         ok=not errors,
         queryCount=len(tracking_numbers),
         shopDomain=None,
+        generatedAt=datetime.now(timezone.utc),
+        shipments=shipments,
+        errors=errors,
+    )
+
+
+@app.post("/internal/api/order-track", response_model=TrackResponse)
+def internal_track_by_order(request: Request, payload: InternalOrderTrackRequest) -> TrackResponse:
+    verify_internal_token(request)
+
+    shipments, errors = query_order_tracking(
+        client,
+        payload.order_no,
+        payload.email,
+        payload.shop_domain,
+    )
+
+    return TrackResponse(
+        success=not errors,
+        ok=not errors,
+        queryCount=1,
+        shopDomain=payload.shop_domain,
         generatedAt=datetime.now(timezone.utc),
         shipments=shipments,
         errors=errors,

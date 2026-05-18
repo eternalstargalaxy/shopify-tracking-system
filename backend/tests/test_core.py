@@ -39,7 +39,7 @@ from backend.app import services as services_module
 from backend.app import shopify_admin as shopify_admin_module
 from backend.app import shopify_webhooks as webhooks_module
 from backend.app import shopify_oauth as oauth_module
-from backend.app.schemas import OrderSummary, OrderSummaryItem
+from backend.app.schemas import OrderSummary, OrderSummaryItem, TrackingShipment
 from backend.tools.import_order_trackings import (
     _normalize_header,
     _pick_column,
@@ -162,28 +162,33 @@ class CoreTests(unittest.TestCase):
                 object.__setattr__(config_module.settings, "alert_min_interval_seconds", original_interval)
 
     def test_shopify_oauth_start_redirects_to_authorize(self) -> None:
+        original_db_path = config_module.settings.database_path
         original_client_id = config_module.settings.shopify_client_id
         original_client_secret = config_module.settings.shopify_client_secret
         original_allowed_domains = config_module.settings.allowed_shop_domains
-        try:
-            object.__setattr__(config_module.settings, "shopify_client_id", "demo-client-id")
-            object.__setattr__(config_module.settings, "shopify_client_secret", "demo-client-secret")
-            object.__setattr__(config_module.settings, "allowed_shop_domains", ("demo.myshopify.com",))
-            client = TestClient(main_module.app, base_url="https://testserver")
-            response = client.get(
-                "/api/shopify/auth/start",
-                params={"shop": "demo.myshopify.com"},
-                follow_redirects=False,
-            )
-            self.assertEqual(response.status_code, 302)
-            self.assertIn("admin/oauth/authorize", response.headers["location"])
-            self.assertIn("client_id=demo-client-id", response.headers["location"])
-            self.assertIn("scope=read_orders%2Cread_fulfillments%2Cread_all_orders", response.headers["location"])
-            self.assertIn("shopify_oauth_nonce", response.headers.get("set-cookie", ""))
-        finally:
-            object.__setattr__(config_module.settings, "shopify_client_id", original_client_id)
-            object.__setattr__(config_module.settings, "shopify_client_secret", original_client_secret)
-            object.__setattr__(config_module.settings, "allowed_shop_domains", original_allowed_domains)
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                object.__setattr__(config_module.settings, "shopify_client_id", "demo-client-id")
+                object.__setattr__(config_module.settings, "shopify_client_secret", "demo-client-secret")
+                object.__setattr__(config_module.settings, "allowed_shop_domains", ("demo.myshopify.com",))
+                init_db()
+                client = TestClient(main_module.app, base_url="https://testserver")
+                response = client.get(
+                    "/api/shopify/auth/start",
+                    params={"shop": "demo.myshopify.com"},
+                    follow_redirects=False,
+                )
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("admin/oauth/authorize", response.headers["location"])
+                self.assertIn("client_id=demo-client-id", response.headers["location"])
+                self.assertIn("scope=read_orders%2Cread_fulfillments%2Cread_all_orders", response.headers["location"])
+                self.assertIn("shopify_oauth_nonce", response.headers.get("set-cookie", ""))
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "shopify_client_id", original_client_id)
+                object.__setattr__(config_module.settings, "shopify_client_secret", original_client_secret)
+                object.__setattr__(config_module.settings, "allowed_shop_domains", original_allowed_domains)
 
     def test_shopify_oauth_callback_stores_installation(self) -> None:
         original_db_path = config_module.settings.database_path
@@ -1283,6 +1288,71 @@ class CoreTests(unittest.TestCase):
                 object.__setattr__(config_module.settings, "mock_when_api_key_missing", original_mock)
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
                 main_module.client.api_key = original_client_key
+
+    def test_internal_order_track_requires_token(self) -> None:
+        original_token = config_module.settings.internal_dashboard_token
+        original_db_path = config_module.settings.database_path
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "internal_dashboard_token", "secret-token")
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                with TestClient(main_module.app) as client:
+                    response = client.post(
+                        "/internal/api/order-track",
+                        json={"orderNo": "LC8116204", "shopDomain": "demo.myshopify.com"},
+                    )
+                self.assertEqual(response.status_code, 401)
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "internal_dashboard_token", original_token)
+
+    def test_internal_order_track_uses_shop_domain_and_returns_shipments(self) -> None:
+        class FakeClient:
+            pass
+
+        original_token = config_module.settings.internal_dashboard_token
+        original_db_path = config_module.settings.database_path
+        original_query = main_module.query_order_tracking
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "internal_dashboard_token", "secret-token")
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+
+                def fake_query(_client, order_no, email, shop_domain):
+                    self.assertEqual(order_no, "LC8116204")
+                    self.assertEqual(email, None)
+                    self.assertEqual(shop_domain, "demo.myshopify.com")
+                    return [
+                        TrackingShipment(
+                            trackingNumber="4PX3002372188000CN",
+                            carrierCode="190094",
+                            carrierName="4PX",
+                            normalizedStatus="delivered",
+                            statusText="Delivered",
+                            updatedAt="2026-05-18T00:00:00Z",
+                            supportNotice="Delivered.",
+                            cached=False,
+                            events=[],
+                        )
+                    ], []
+
+                main_module.query_order_tracking = fake_query
+                with TestClient(main_module.app) as client:
+                    response = client.post(
+                        "/internal/api/order-track",
+                        headers={"x-internal-token": "secret-token"},
+                        json={"orderNo": "LC8116204", "shopDomain": "demo.myshopify.com"},
+                    )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertEqual(payload["shipments"][0]["trackingNumber"], "4PX3002372188000CN")
+                self.assertEqual(payload["shopDomain"], "demo.myshopify.com")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "internal_dashboard_token", original_token)
+                main_module.query_order_tracking = original_query
 
     def test_internal_recent_returns_cached_shipments(self) -> None:
         original_token = config_module.settings.internal_dashboard_token

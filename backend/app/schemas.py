@@ -114,6 +114,17 @@ class TrackResponse(BaseModel):
 class InternalTrackRequest(BaseModel):
     nums: str
     carrier: str | None = None
+    shop_domain: str | None = Field(default=None, alias="shopDomain")
+
+    model_config = {"populate_by_name": True}
+
+
+class InternalOrderTrackRequest(BaseModel):
+    order_no: str = Field(alias="orderNo")
+    email: str | None = None
+    shop_domain: str | None = Field(default=None, alias="shopDomain")
+
+    model_config = {"populate_by_name": True}
 
 
 class RecentShipmentsResponse(BaseModel):

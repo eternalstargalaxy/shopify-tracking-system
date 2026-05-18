@@ -24,6 +24,8 @@ dist/
 build/
 
 sampled_orders_50_v2_check.json
+.tmp_tests/
+handoff/
 
 .DS_Store
 Thumbs.db
