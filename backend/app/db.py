@@ -110,6 +110,14 @@ def init_db() -> None:
                 context_json TEXT NOT NULL DEFAULT '{{}}',
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS shopify_installations (
+                shop_domain TEXT PRIMARY KEY,
+                access_token TEXT NOT NULL,
+                scope TEXT,
+                installed_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
         _ensure_columns(conn)
@@ -504,6 +512,64 @@ def replace_order_tracking_numbers_for_order_name(
             )
         conn.commit()
         return len(deduped_tracking_numbers)
+    finally:
+        conn.close()
+
+
+def upsert_shopify_installation(
+    shop_domain: str,
+    access_token: str,
+    scope: str | None,
+) -> None:
+    normalized_shop = (shop_domain or "").strip().lower()
+    if not normalized_shop or not access_token:
+        return
+
+    conn = get_connection()
+    now = _now_iso()
+    try:
+        conn.execute(
+            """
+            INSERT INTO shopify_installations (
+                shop_domain,
+                access_token,
+                scope,
+                installed_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(shop_domain) DO UPDATE SET
+                access_token = excluded.access_token,
+                scope = excluded.scope,
+                updated_at = excluded.updated_at
+            """,
+            (
+                normalized_shop,
+                access_token,
+                scope,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fetch_shopify_installation(shop_domain: str | None) -> sqlite3.Row | None:
+    normalized_shop = (shop_domain or "").strip().lower()
+    if not normalized_shop:
+        return None
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT *
+            FROM shopify_installations
+            WHERE shop_domain = ?
+            LIMIT 1
+            """,
+            (normalized_shop,),
+        ).fetchone()
     finally:
         conn.close()
 

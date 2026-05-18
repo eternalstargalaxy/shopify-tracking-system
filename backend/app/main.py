@@ -7,7 +7,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import ROOT_DIR, settings
@@ -24,6 +24,13 @@ from .schemas import (
 )
 from .services import get_recent_shipments, parse_tracking_numbers, query_order_tracking, query_tracking_numbers
 from .seventeen_track import SeventeenTrackClient
+from .shopify_oauth import (
+    build_authorize_url,
+    complete_oauth_install,
+    exchange_code_for_offline_token,
+    validate_shop_domain,
+    verify_oauth_callback,
+)
 from .shopify_proxy import verify_proxy_request
 from .shopify_webhooks import parse_webhook_payload, sync_tracking_mappings_from_webhook, verify_webhook_request
 
@@ -100,6 +107,49 @@ async def request_logging_middleware(request: Request, call_next):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/shopify/auth/start")
+def shopify_auth_start(
+    request: Request,
+    shop: str = Query(..., description="Target Shopify shop domain, e.g. example.myshopify.com"),
+) -> RedirectResponse:
+    shop_domain = validate_shop_domain(shop)
+    authorize_url, nonce = build_authorize_url(request, shop_domain)
+    response = RedirectResponse(authorize_url, status_code=302)
+    response.set_cookie(
+        "shopify_oauth_nonce",
+        nonce,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=settings.shopify_oauth_state_ttl_seconds,
+    )
+    return response
+
+
+@app.get("/api/shopify/auth/callback", response_class=HTMLResponse)
+def shopify_auth_callback(request: Request) -> HTMLResponse:
+    shop_domain, code = verify_oauth_callback(request)
+    token_payload = exchange_code_for_offline_token(
+        shop_domain,
+        code,
+        str(request.url_for("shopify_auth_callback")),
+    )
+    result = complete_oauth_install(shop_domain, token_payload)
+    response = HTMLResponse(
+        (
+            "<html><body style='font-family:sans-serif;padding:32px;'>"
+            "<h2>Shopify authorization completed</h2>"
+            f"<p>Shop: <strong>{result['shopDomain']}</strong></p>"
+            f"<p>Granted scopes: {', '.join(result['grantedScopes']) or '(none)'}</p>"
+            f"<p>Missing required scopes: {', '.join(result['missingScopes']) or '(none)'}</p>"
+            "<p>You can close this tab and return to Shopify.</p>"
+            "</body></html>"
+        )
+    )
+    response.delete_cookie("shopify_oauth_nonce")
+    return response
 
 
 @app.post("/api/shopify/webhooks")

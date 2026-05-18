@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .config import settings
+from .db import fetch_shopify_installation
 from .schemas import OrderSummary, OrderSummaryItem
 
 ORDER_LOOKUP_QUERY = """
@@ -304,6 +305,10 @@ class ShopifyAdminClient:
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
             return self.access_token
+
+        installation = fetch_shopify_installation(shop_domain)
+        if installation and installation["access_token"]:
+            return str(installation["access_token"])
 
         cached = self._token_cache.get(shop_domain)
         if cached and cached[1] > time.time():

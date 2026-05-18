@@ -25,6 +25,17 @@ class Settings:
     shopify_storefront_url: str = os.getenv("SHOPIFY_STOREFRONT_URL", "")
     shopify_admin_access_token: str = os.getenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "")
     shopify_admin_api_version: str = os.getenv("SHOPIFY_ADMIN_API_VERSION", "2026-04")
+    shopify_required_scopes: tuple[str, ...] = tuple(
+        part.strip()
+        for part in os.getenv(
+            "SHOPIFY_REQUIRED_SCOPES",
+            "read_orders,read_fulfillments,read_all_orders",
+        ).split(",")
+        if part.strip()
+    )
+    shopify_oauth_state_ttl_seconds: int = int(
+        os.getenv("SHOPIFY_OAUTH_STATE_TTL_SECONDS", "900")
+    )
     allowed_shop_domains: tuple[str, ...] = tuple(
         part.strip()
         for part in os.getenv("ALLOWED_SHOP_DOMAINS", "").split(",")

@@ -17,6 +17,7 @@ from backend.app import config as config_module
 from backend.app import main as main_module
 from backend.app.db import (
     count_recent_system_events,
+    fetch_shopify_installation,
     fetch_tracking_record,
     init_db,
     is_store_order_tracking_number,
@@ -37,6 +38,7 @@ from backend.app import seventeen_track_storefront as storefront_module
 from backend.app import services as services_module
 from backend.app import shopify_admin as shopify_admin_module
 from backend.app import shopify_webhooks as webhooks_module
+from backend.app import shopify_oauth as oauth_module
 from backend.app.schemas import OrderSummary, OrderSummaryItem
 from backend.tools.import_order_trackings import (
     _normalize_header,
@@ -158,6 +160,112 @@ class CoreTests(unittest.TestCase):
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
                 object.__setattr__(config_module.settings, "alert_webhook_url", original_url)
                 object.__setattr__(config_module.settings, "alert_min_interval_seconds", original_interval)
+
+    def test_shopify_oauth_start_redirects_to_authorize(self) -> None:
+        original_client_id = config_module.settings.shopify_client_id
+        original_client_secret = config_module.settings.shopify_client_secret
+        original_allowed_domains = config_module.settings.allowed_shop_domains
+        try:
+            object.__setattr__(config_module.settings, "shopify_client_id", "demo-client-id")
+            object.__setattr__(config_module.settings, "shopify_client_secret", "demo-client-secret")
+            object.__setattr__(config_module.settings, "allowed_shop_domains", ("demo.myshopify.com",))
+            client = TestClient(main_module.app, base_url="https://testserver")
+            response = client.get(
+                "/api/shopify/auth/start",
+                params={"shop": "demo.myshopify.com"},
+                follow_redirects=False,
+            )
+            self.assertEqual(response.status_code, 302)
+            self.assertIn("admin/oauth/authorize", response.headers["location"])
+            self.assertIn("client_id=demo-client-id", response.headers["location"])
+            self.assertIn("scope=read_orders%2Cread_fulfillments%2Cread_all_orders", response.headers["location"])
+            self.assertIn("shopify_oauth_nonce", response.headers.get("set-cookie", ""))
+        finally:
+            object.__setattr__(config_module.settings, "shopify_client_id", original_client_id)
+            object.__setattr__(config_module.settings, "shopify_client_secret", original_client_secret)
+            object.__setattr__(config_module.settings, "allowed_shop_domains", original_allowed_domains)
+
+    def test_shopify_oauth_callback_stores_installation(self) -> None:
+        original_db_path = config_module.settings.database_path
+        original_client_id = config_module.settings.shopify_client_id
+        original_client_secret = config_module.settings.shopify_client_secret
+        original_allowed_domains = config_module.settings.allowed_shop_domains
+        original_exchange = oauth_module.exchange_code_for_offline_token
+        original_main_exchange = main_module.exchange_code_for_offline_token
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                object.__setattr__(config_module.settings, "shopify_client_id", "demo-client-id")
+                object.__setattr__(config_module.settings, "shopify_client_secret", "demo-client-secret")
+                object.__setattr__(config_module.settings, "allowed_shop_domains", ("demo.myshopify.com",))
+                init_db()
+                oauth_module.exchange_code_for_offline_token = lambda *_args, **_kwargs: {
+                    "access_token": "shpat_demo",
+                    "scope": "read_orders,read_fulfillments,read_all_orders",
+                }
+                main_module.exchange_code_for_offline_token = oauth_module.exchange_code_for_offline_token
+
+                client = TestClient(main_module.app, base_url="https://testserver")
+                start_response = client.get(
+                    "/api/shopify/auth/start",
+                    params={"shop": "demo.myshopify.com"},
+                    follow_redirects=False,
+                )
+                redirect_url = start_response.headers["location"]
+                from urllib.parse import parse_qs, urlparse
+
+                parsed = urlparse(redirect_url)
+                state = parse_qs(parsed.query)["state"][0]
+                query = {
+                    "code": "demo-code",
+                    "shop": "demo.myshopify.com",
+                    "state": state,
+                    "timestamp": str(int(__import__("time").time())),
+                }
+                message = "&".join(f"{key}={value}" for key, value in sorted(query.items()))
+                query["hmac"] = hmac.new(
+                    config_module.settings.shopify_client_secret.encode("utf-8"),
+                    message.encode("utf-8"),
+                    hashlib.sha256,
+                ).hexdigest()
+                callback_response = client.get("/api/shopify/auth/callback", params=query)
+                self.assertEqual(callback_response.status_code, 200)
+                installation = fetch_shopify_installation("demo.myshopify.com")
+                self.assertIsNotNone(installation)
+                self.assertEqual(installation["access_token"], "shpat_demo")
+                self.assertIn("read_all_orders", installation["scope"])
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                object.__setattr__(config_module.settings, "shopify_client_id", original_client_id)
+                object.__setattr__(config_module.settings, "shopify_client_secret", original_client_secret)
+                object.__setattr__(config_module.settings, "allowed_shop_domains", original_allowed_domains)
+                oauth_module.exchange_code_for_offline_token = original_exchange
+                main_module.exchange_code_for_offline_token = original_main_exchange
+
+    def test_shopify_admin_prefers_stored_installation_token(self) -> None:
+        original_db_path = config_module.settings.database_path
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                from backend.app.db import upsert_shopify_installation
+
+                upsert_shopify_installation(
+                    "demo.myshopify.com",
+                    "shpat_demo_installation",
+                    "read_orders,read_fulfillments,read_all_orders",
+                )
+                client = shopify_admin_module.ShopifyAdminClient(
+                    access_token="",
+                    client_id="",
+                    client_secret="",
+                )
+                self.assertEqual(
+                    client._get_access_token("demo.myshopify.com"),
+                    "shpat_demo_installation",
+                )
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
 
     def test_fetch_tracking_record_without_carrier_uses_detected_carrier(self) -> None:
         original_db_path = config_module.settings.database_path
