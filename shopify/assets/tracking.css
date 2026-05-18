@@ -366,23 +366,25 @@
 }
 
 .order-item-title-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 14px;
 }
 
 .order-item-title {
+  display: block;
   min-width: 0;
   color: var(--text);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.5;
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
 .order-item-price {
-  flex: none;
+  justify-self: end;
   color: var(--text);
   font-size: 14px;
   font-weight: 500;
@@ -538,7 +540,11 @@
   }
 
   .order-item-title-row {
-    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 4px;
+  }
+
+  .order-item-price {
+    justify-self: start;
   }
 }
