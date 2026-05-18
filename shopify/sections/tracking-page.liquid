@@ -63,6 +63,28 @@
         <div class="tracking-empty" id="emptyState">
           Enter a tracking number to view the latest delivery timeline.
         </div>
+        <section class="info-panel order-summary-panel order-summary-panel--shared" id="sharedOrderSummaryPanel" hidden>
+          <div class="panel-heading">
+            <h2>Order Information</h2>
+            <p class="order-panel-order" hidden>
+              <span>Order</span>
+              <strong class="order-name"></strong>
+            </p>
+          </div>
+          <div class="order-summary" hidden>
+            <div class="order-placed-block">
+              <span>Placed</span>
+              <strong class="order-placed-at"></strong>
+            </div>
+            <div class="order-fulfilment-block">
+              <span>Fulfilment</span>
+              <strong class="order-fulfilment-status"></strong>
+            </div>
+            <div class="order-items-block">
+              <div class="order-items-grid"></div>
+            </div>
+          </div>
+        </section>
         <div class="tracking-result-list" id="resultsList"></div>
       </section>
     </div>

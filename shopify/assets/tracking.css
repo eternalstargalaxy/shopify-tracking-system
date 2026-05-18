@@ -179,6 +179,10 @@
   gap: 24px;
 }
 
+.order-summary-panel--shared {
+  margin-bottom: 24px;
+}
+
 .shipment-card {
   display: grid;
   gap: 22px;

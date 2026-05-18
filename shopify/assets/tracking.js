@@ -11,6 +11,7 @@
   const message = document.querySelector("#formMessage");
   const resultsList = document.querySelector("#resultsList");
   const emptyState = document.querySelector("#emptyState");
+  const sharedOrderSummaryPanel = document.querySelector("#sharedOrderSummaryPanel");
   const template = document.querySelector("#shipmentTemplate");
   const trackButton = document.querySelector("#trackBtn");
   const TRACK_COOLDOWN_SECONDS = 15;
@@ -280,10 +281,9 @@
     return match ? match[0].trim() : "";
   }
 
-  function renderOrderSummary(node, orderSummary) {
-    const container = node.querySelector(".order-summary");
-    const panel = node.querySelector(".order-summary-panel");
-    const orderPanelOrder = node.querySelector(".order-panel-order");
+  function renderOrderSummaryPanel(panel, orderSummary) {
+    const container = panel && panel.querySelector(".order-summary");
+    const orderPanelOrder = panel && panel.querySelector(".order-panel-order");
     if (!container) return;
     if (!orderSummary || (!orderSummary.orderName && !orderSummary.placedAt && !orderSummary.fulfillmentStatus && !(orderSummary.items || []).length)) {
       container.hidden = true;
@@ -297,17 +297,17 @@
     const fulfilment = normalizeDisplayText(orderSummary.fulfillmentStatus);
     const items = Array.isArray(orderSummary.items) ? orderSummary.items : [];
 
-    const orderPlacedBlock = node.querySelector(".order-placed-block");
-    const orderFulfilmentBlock = node.querySelector(".order-fulfilment-block");
-    const orderItemsBlock = node.querySelector(".order-items-block");
-    node.querySelector(".order-name").textContent = orderName || "";
-    node.querySelector(".order-placed-at").textContent = placedAt || "";
-    node.querySelector(".order-fulfilment-status").textContent = fulfilment || "";
+    const orderPlacedBlock = panel.querySelector(".order-placed-block");
+    const orderFulfilmentBlock = panel.querySelector(".order-fulfilment-block");
+    const orderItemsBlock = panel.querySelector(".order-items-block");
+    panel.querySelector(".order-name").textContent = orderName || "";
+    panel.querySelector(".order-placed-at").textContent = placedAt || "";
+    panel.querySelector(".order-fulfilment-status").textContent = fulfilment || "";
     if (orderPanelOrder) orderPanelOrder.hidden = !orderName;
     orderPlacedBlock.hidden = !placedAt;
     orderFulfilmentBlock.hidden = !fulfilment;
 
-    const orderItems = node.querySelector(".order-items-grid");
+    const orderItems = panel.querySelector(".order-items-grid");
     orderItems.innerHTML = "";
     items.slice(0, 4).forEach((entry) => {
       const item = document.createElement("article");
@@ -342,6 +342,10 @@
     if (panel) panel.hidden = container.hidden;
   }
 
+  function renderOrderSummary(node, orderSummary) {
+    renderOrderSummaryPanel(node.querySelector(".order-summary-panel"), orderSummary);
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replaceAll("&", "&amp;")
@@ -355,6 +359,14 @@
     resultsList.innerHTML = "";
     emptyState.hidden = shipments.length > 0;
     const totalShipments = shipments.length;
+    if (sharedOrderSummaryPanel) {
+      sharedOrderSummaryPanel.hidden = true;
+    }
+
+    if (totalShipments > 1 && sharedOrderSummaryPanel) {
+      const sharedSummarySource = shipments.find((shipment) => shipment && shipment.orderSummary && shipment.orderSummary.orderName);
+      renderOrderSummaryPanel(sharedOrderSummaryPanel, sharedSummarySource ? sharedSummarySource.orderSummary : null);
+    }
 
     shipments.forEach((shipment, index) => {
       const node = template.content.firstElementChild.cloneNode(true);
@@ -369,7 +381,7 @@
           packageLabel.textContent = `Package ${index + 1} of ${totalShipments}`;
         }
       }
-      if (totalShipments > 1 && index > 0) {
+      if (totalShipments > 1) {
         const orderPanel = node.querySelector(".order-summary-panel");
         if (orderPanel) orderPanel.hidden = true;
       }
