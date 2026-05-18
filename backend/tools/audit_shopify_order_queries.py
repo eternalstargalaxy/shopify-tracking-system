@@ -116,9 +116,10 @@ def main() -> int:
         "pendingCount": pending_count,
         "failureCount": len(failures),
         "failures": failures,
+        "error": admin_client.last_error,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0
+    return 1 if admin_client.last_error else 0
 
 
 if __name__ == "__main__":

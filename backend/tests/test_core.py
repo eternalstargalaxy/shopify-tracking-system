@@ -267,6 +267,45 @@ class CoreTests(unittest.TestCase):
             finally:
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
 
+    def test_shopify_admin_empty_scoped_client_credentials_sets_error(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self._payload = payload
+
+            def read(self) -> bytes:
+                return json.dumps(self._payload).encode("utf-8")
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+        original_db_path = config_module.settings.database_path
+        original_urlopen = shopify_admin_module.urlopen
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                shopify_admin_module.urlopen = lambda *_args, **_kwargs: FakeResponse(
+                    {
+                        "access_token": "shpat_empty",
+                        "scope": "",
+                        "expires_in": 3600,
+                    }
+                )
+                client = shopify_admin_module.ShopifyAdminClient(
+                    access_token="",
+                    client_id="demo-client-id",
+                    client_secret="demo-client-secret",
+                )
+                mappings = client.iter_order_tracking_mappings("demo.myshopify.com")
+                self.assertEqual(mappings, [])
+                self.assertIn("without Admin API scopes", client.last_error or "")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                shopify_admin_module.urlopen = original_urlopen
+
     def test_fetch_tracking_record_without_carrier_uses_detected_carrier(self) -> None:
         original_db_path = config_module.settings.database_path
         with workspace_temp_dir() as temp_dir:
@@ -944,6 +983,68 @@ class CoreTests(unittest.TestCase):
                 )
                 self.assertFalse(errors)
                 self.assertEqual([shipment.tracking_number for shipment in shipments], ["YT2602700701984711"])
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
+
+    def test_query_order_tracking_returns_all_local_mapped_split_shipments(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {"accepted": [{"number": tracking_number, "carrier": carrier_code}]}
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                return {
+                    "data": {
+                        "accepted": [
+                            {
+                                "number": tracking_number,
+                                "carrier": carrier_code or "auto",
+                                "track": {
+                                    "z0": "InTransit",
+                                    "z1": "Parcel moving",
+                                    "tracking": [],
+                                },
+                            }
+                        ]
+                    }
+                }
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                upsert_order_tracking_number(
+                    tracking_number="YT2611001002223456",
+                    carrier_code="",
+                    shop_domain="demo.myshopify.com",
+                    order_name="LC8152308",
+                    source="shopify_backfill",
+                )
+                upsert_order_tracking_number(
+                    tracking_number="YT2611001002216716",
+                    carrier_code="",
+                    shop_domain="demo.myshopify.com",
+                    order_name="LC8152308",
+                    source="shopify_backfill",
+                )
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = lambda *_args, **_kwargs: None
+                services_module.storefront_client.lookup_by_order = lambda *_args, **_kwargs: None
+
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LC8152308",
+                    None,
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual(
+                    sorted(shipment.tracking_number for shipment in shipments),
+                    ["YT2611001002216716", "YT2611001002223456"],
+                )
             finally:
                 object.__setattr__(config_module.settings, "database_path", original_db_path)
                 services_module.storefront_client.lookup_by_order = original_lookup_by_order

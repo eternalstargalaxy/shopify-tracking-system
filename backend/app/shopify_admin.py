@@ -89,6 +89,7 @@ class ShopifyAdminClient:
         self.client_id = client_id if client_id is not None else settings.shopify_client_id
         self.client_secret = client_secret if client_secret is not None else settings.shopify_client_secret
         self._token_cache: dict[str, tuple[str, float]] = {}
+        self.last_error: str | None = None
 
     @property
     def enabled(self) -> bool:
@@ -217,6 +218,8 @@ class ShopifyAdminClient:
         max_pages: int | None = None,
     ) -> list[ShopifyOrderTrackingMapping]:
         if not self.enabled or not shop_domain:
+            if not self.enabled:
+                self.last_error = "Shopify Admin integration is not configured."
             return []
 
         access_token = self._get_access_token(shop_domain)
@@ -265,6 +268,8 @@ class ShopifyAdminClient:
         max_pages: int | None = None,
     ) -> list[ShopifyOrderRecord]:
         if not self.enabled or not shop_domain:
+            if not self.enabled:
+                self.last_error = "Shopify Admin integration is not configured."
             return []
 
         access_token = self._get_access_token(shop_domain)
@@ -304,17 +309,21 @@ class ShopifyAdminClient:
 
     def _get_access_token(self, shop_domain: str) -> str | None:
         if self.access_token:
+            self.last_error = None
             return self.access_token
 
         installation = fetch_shopify_installation(shop_domain)
         if installation and installation["access_token"]:
+            self.last_error = None
             return str(installation["access_token"])
 
         cached = self._token_cache.get(shop_domain)
         if cached and cached[1] > time.time():
+            self.last_error = None
             return cached[0]
 
         if not self.client_id or not self.client_secret:
+            self.last_error = "Missing Shopify client credentials."
             return None
 
         payload = urlencode(
@@ -334,21 +343,36 @@ class ShopifyAdminClient:
         try:
             with urlopen(request, timeout=10) as response:
                 raw = response.read().decode("utf-8")
-        except (HTTPError, URLError, TimeoutError):
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            self.last_error = f"Shopify token exchange failed: HTTP {exc.code} {detail}".strip()
+            return None
+        except (URLError, TimeoutError):
+            self.last_error = "Shopify token exchange network error."
             return None
 
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
+            self.last_error = "Shopify token exchange returned invalid JSON."
             return None
 
         token = parsed.get("access_token")
+        granted_scope = str(parsed.get("scope") or "").strip()
         expires_in = int(parsed.get("expires_in") or 0)
         if not token:
+            self.last_error = "Shopify token exchange returned no access token."
+            return None
+        if not granted_scope:
+            self.last_error = (
+                "Shopify token exchange returned an access token without Admin API scopes. "
+                "Reauthorize the app through the OAuth install flow."
+            )
             return None
 
         ttl = max(expires_in - 300, 60) if expires_in else 3600
         self._token_cache[shop_domain] = (token, time.time() + ttl)
+        self.last_error = None
         return token
 
     def _search_orders(self, shop_domain: str, query: str) -> list[dict[str, Any]]:
@@ -403,15 +427,22 @@ class ShopifyAdminClient:
             with urlopen(request, timeout=20) as response:
                 raw = response.read().decode("utf-8")
                 link_header = response.headers.get("Link")
-        except (HTTPError, URLError, TimeoutError):
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            self.last_error = f"Shopify orders page request failed: HTTP {exc.code} {detail}".strip()
+            return [], None
+        except (URLError, TimeoutError):
+            self.last_error = "Shopify orders page request failed due to a network error."
             return [], None
 
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
+            self.last_error = "Shopify orders page returned invalid JSON."
             return [], None
 
         orders = parsed.get("orders") or []
+        self.last_error = None
         return orders, _extract_next_page_info(link_header)
 
     def _post_graphql(

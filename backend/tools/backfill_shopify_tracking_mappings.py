@@ -81,9 +81,10 @@ def main() -> int:
         "syncedOrders": synced_orders,
         "syncedTrackings": synced_trackings,
         "skippedOrders": skipped_orders,
+        "error": client.last_error,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0
+    return 1 if client.last_error else 0
 
 
 if __name__ == "__main__":
