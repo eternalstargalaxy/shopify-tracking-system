@@ -402,15 +402,16 @@ class ShopifyAdminClient:
         limit: int = 250,
     ) -> tuple[list[dict[str, Any]], str | None]:
         params: dict[str, Any] = {
-            "status": "any",
             "limit": max(1, min(limit, 250)),
             "fields": "id,name,fulfillment_status,fulfillments",
         }
         if page_info:
             params["page_info"] = page_info
-        elif updated_at_min:
-            params["updated_at_min"] = updated_at_min
-            params["order"] = "updated_at asc"
+        else:
+            params["status"] = "any"
+            if updated_at_min:
+                params["updated_at_min"] = updated_at_min
+                params["order"] = "updated_at asc"
 
         request = Request(
             url=(

@@ -1400,6 +1400,54 @@ class CoreTests(unittest.TestCase):
             "abc123",
         )
 
+    def test_shopify_admin_omits_status_when_following_page_info(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload: dict[str, object], link_header: str | None = None) -> None:
+                self._payload = payload
+                self.headers = {"Link": link_header} if link_header else {}
+
+            def read(self) -> bytes:
+                return json.dumps(self._payload).encode("utf-8")
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+        original_db_path = config_module.settings.database_path
+        original_urlopen = shopify_admin_module.urlopen
+        urls: list[str] = []
+        responses = iter(
+            [
+                FakeResponse(
+                    {"orders": []},
+                    '<https://demo.myshopify.com/admin/api/2026-04/orders.json?page_info=abc123&limit=250>; rel="next"',
+                ),
+                FakeResponse({"orders": []}),
+            ]
+        )
+
+        def fake_urlopen(request, timeout=0):
+            urls.append(request.full_url)
+            return next(responses)
+
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                shopify_admin_module.urlopen = fake_urlopen
+                client = shopify_admin_module.ShopifyAdminClient(access_token="shpat_demo")
+                mappings = client.iter_order_tracking_mappings("demo.myshopify.com", max_pages=2)
+                self.assertEqual(mappings, [])
+                self.assertEqual(len(urls), 2)
+                self.assertIn("status=any", urls[0])
+                self.assertIn("page_info=abc123", urls[1])
+                self.assertNotIn("status=any", urls[1])
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                shopify_admin_module.urlopen = original_urlopen
+
     def test_shopify_admin_matches_order_identity_with_optional_hash_prefix(self) -> None:
         order = {
             "name": "#LFR1112",
