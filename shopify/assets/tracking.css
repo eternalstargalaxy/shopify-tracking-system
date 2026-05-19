@@ -374,6 +374,10 @@
   gap: 4px;
 }
 
+.order-item-card > .order-item-copy:first-child {
+  grid-column: 1 / -1;
+}
+
 .order-item-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
