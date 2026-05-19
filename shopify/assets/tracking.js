@@ -65,6 +65,9 @@
     minute: "2-digit",
     hour12: false
   });
+  const COUNTRY_FORMATTER = typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
   let cooldownTimer = null;
   let cooldownRemaining = 0;
   let queryMode = "tracking";
@@ -164,19 +167,35 @@
     return STATUS_SENTENCES[shipment.normalizedStatus] || "Tracking updates are available below.";
   }
 
-  function formatLocation(value) {
+  function formatCountryName(value) {
+    const text = normalizeDisplayText(value).toUpperCase();
+    if (!text) return "";
+    if (/^[A-Z]{2}$/.test(text) && COUNTRY_FORMATTER) {
+      return COUNTRY_FORMATTER.of(text) || text;
+    }
+    return normalizeDisplayText(value);
+  }
+
+  function formatLocation(value, shipment) {
+    const destinationCountry = formatCountryName(shipment && shipment.destinationCountry);
     if (!value) return "";
     if (typeof value === "object") {
       const address = value.address || value;
       const parts = [
-        address.city,
-        address.state,
-        address.country,
+        normalizeDisplayText(address.city),
+        normalizeDisplayText(address.state || address.province || address.region),
+        formatCountryName(address.country),
         address.postal_code
       ].filter(Boolean);
       return parts.join(", ");
     }
-    return normalizeDisplayText(value);
+    const locationText = normalizeDisplayText(value);
+    if (!locationText) return destinationCountry;
+    if (!destinationCountry) return locationText;
+    const lowerLocation = locationText.toLowerCase();
+    const lowerCountry = destinationCountry.toLowerCase();
+    if (lowerLocation.includes(lowerCountry)) return locationText;
+    return `${locationText}, ${destinationCountry}`;
   }
 
   function isOriginLocationText(value) {
@@ -196,7 +215,7 @@
     return chronological.find((event) => !isPreDispatchDescription(event.description)) || chronological[0] || null;
   }
 
-  function collapseOriginEvents(events) {
+  function collapseOriginEvents(events, shipment) {
     if (!events.length) return { events: [], hiddenOriginCount: 0, dispatchEvent: null };
 
     const chronological = [...events].reverse();
@@ -205,7 +224,7 @@
     let summaryInserted = false;
 
     chronological.forEach((event, index) => {
-      const locationText = formatLocation(event.location);
+      const locationText = formatLocation(event.location, shipment);
       const isOriginEvent = isOriginLocationText(locationText);
       if (isOriginEvent) {
         hiddenOriginCount += 1;
@@ -399,7 +418,7 @@
         }
       }
 
-      const timelineData = collapseOriginEvents(shipment.events || []);
+      const timelineData = collapseOriginEvents(shipment.events || [], shipment);
       const events = timelineData.events;
       node.querySelector(".event-count").textContent = events.length
         ? `${events.length} updates`
@@ -455,7 +474,7 @@
       events.forEach((event, index) => {
         const item = document.createElement("li");
         const eventTime = event.eventTime || event.time;
-        const eventLocation = formatLocation(event.location);
+        const eventLocation = formatLocation(event.location, shipment);
         if (shouldCollapseTimeline && index >= hiddenStartIndex && index <= hiddenEndIndex) {
           item.dataset.hidden = "true";
           hiddenCount += 1;
