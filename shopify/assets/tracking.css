@@ -179,8 +179,46 @@
   gap: 24px;
 }
 
+.shipment-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.shipment-tab-button {
+  min-height: 62px;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  font: inherit;
+}
+
+.shipment-tab-button.is-active {
+  border-color: var(--accent);
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.shipment-tab-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.shipment-tab-status {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .order-summary-panel--shared {
-  margin-bottom: 24px;
+  margin-top: 24px;
 }
 
 .shipment-card {
@@ -533,6 +571,10 @@
 @media (max-width: 768px) {
   .tracking-page {
     padding: 40px 14px 60px;
+  }
+
+  .shipment-tabs {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .shipment-head {

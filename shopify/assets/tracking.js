@@ -11,6 +11,7 @@
   const message = document.querySelector("#formMessage");
   const resultsList = document.querySelector("#resultsList");
   const emptyState = document.querySelector("#emptyState");
+  const shipmentTabs = document.querySelector("#shipmentTabs");
   const sharedOrderSummaryPanel = document.querySelector("#sharedOrderSummaryPanel");
   const template = document.querySelector("#shipmentTemplate");
   const trackButton = document.querySelector("#trackBtn");
@@ -71,6 +72,7 @@
   let cooldownTimer = null;
   let cooldownRemaining = 0;
   let queryMode = "tracking";
+  let activeShipmentIndex = 0;
 
   function setMessage(text, isError) {
     message.textContent = text || "";
@@ -394,148 +396,196 @@
       .replaceAll("'", "&#039;");
   }
 
+  function renderShipmentCard(shipment, index, totalShipments) {
+    const node = template.content.firstElementChild.cloneNode(true);
+    const packageLabel = node.querySelector(".shipment-package-label");
+    node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Carrier pending";
+    node.querySelector(".tracking-number").textContent = getPrimaryShipmentLabel(shipment);
+    node.querySelector(".shipment-summary-line").textContent = getSummarySentence(shipment);
+    renderOrderSummary(node, shipment.orderSummary);
+    if (packageLabel) {
+      packageLabel.hidden = totalShipments <= 1;
+      if (totalShipments > 1) {
+        packageLabel.textContent = `Package ${index + 1} of ${totalShipments}`;
+      }
+    }
+    if (totalShipments > 1) {
+      const orderPanel = node.querySelector(".order-summary-panel");
+      if (orderPanel) orderPanel.hidden = true;
+    }
+
+    const timeline = node.querySelector(".timeline");
+    const timelineToggle = node.querySelector(".timeline-toggle");
+    node.querySelector(".destination").textContent = shipment.destinationCountry || "-";
+    node.dataset.status = shipment.normalizedStatus || "unknown";
+    const lastMileCard = node.querySelector(".last-mile-card");
+    const lastMileNumber = normalizeDisplayText(shipment.lastMileTrackingNumber);
+    if (lastMileCard) {
+      lastMileCard.hidden = !lastMileNumber;
+      if (lastMileNumber) {
+        node.querySelector(".last-mile-tracking-number").textContent = lastMileNumber;
+      }
+    }
+
+    const timelineData = collapseOriginEvents(shipment.events || [], shipment);
+    const events = timelineData.events;
+    node.querySelector(".event-count").textContent = events.length
+      ? `${events.length} updates`
+      : "No scans yet";
+    node.querySelector(".dispatched-at").textContent = formatDate(
+      timelineData.dispatchEvent && (timelineData.dispatchEvent.eventTime || timelineData.dispatchEvent.time)
+    );
+    node.querySelector(".updated-at-secondary").textContent = formatDate(shipment.updatedAt);
+    node.querySelector(".status-detail").textContent = normalizeDisplayText(
+      formatStatusText(shipment.providerStatus) || formatStatusText(shipment.normalizedStatus) || "-"
+    ) || "-";
+
+    const supportNotice = node.querySelector(".support-notice");
+    const shouldShowNotice = !events.length || ["exception", "failed_attempt", "unknown", "not_found"].includes(shipment.normalizedStatus);
+    const supportText = getSupportNoticeText(shipment, events);
+    supportNotice.textContent = supportText;
+    supportNotice.hidden = !supportText || (!shouldShowNotice && shipment.normalizedStatus !== "delivered");
+
+    const providerStatus = node.querySelector(".provider-status");
+    const providerText = normalizeDisplayText(cleanEventDescription(shipment.providerStatusDescription));
+    providerStatus.textContent = providerText;
+    providerStatus.hidden = shipment.normalizedStatus === "delivered"
+      || !providerText
+      || providerText === node.querySelector(".status-detail").textContent;
+
+    const activeProgressIndex = PROGRESS_ORDER.indexOf(shipment.normalizedStatus);
+    node.querySelectorAll(".shipment-progress span").forEach((step, progressIndex) => {
+      step.classList.toggle("is-active", progressIndex <= activeProgressIndex && activeProgressIndex >= 0);
+    });
+    if (!events.length) {
+      const item = document.createElement("li");
+      item.className = "empty-event";
+      const emptyTimelineTitle = isCarrierUpdatePending(shipment, events)
+        ? "The carrier has not shared any tracking scans yet."
+        : "No tracking timeline is available yet.";
+      item.innerHTML = `
+          <time>-</time>
+          <div class="event-text">
+            <div class="event-title">${emptyTimelineTitle}</div>
+          </div>
+        `;
+      timeline.appendChild(item);
+      timeline.classList.remove("is-collapsed");
+      if (timelineToggle) timelineToggle.hidden = true;
+    }
+
+    const collapseThreshold = TIMELINE_PINNED_RECENT_COUNT + TIMELINE_PINNED_EARLIEST_COUNT + 1;
+    const shouldCollapseTimeline = events.length > collapseThreshold;
+    const hiddenStartIndex = TIMELINE_PINNED_RECENT_COUNT;
+    const hiddenEndIndex = events.length - TIMELINE_PINNED_EARLIEST_COUNT - 1;
+    let hiddenCount = 0;
+
+    events.forEach((event, eventIndex) => {
+      const item = document.createElement("li");
+      const eventTime = event.eventTime || event.time;
+      const eventLocation = formatLocation(event.location, shipment);
+      if (shouldCollapseTimeline && eventIndex >= hiddenStartIndex && eventIndex <= hiddenEndIndex) {
+        item.dataset.hidden = "true";
+        hiddenCount += 1;
+      }
+      item.innerHTML = `
+        <time>${escapeHtml(formatDate(eventTime))}</time>
+        <div class="event-text">
+          <div class="event-title">${escapeHtml(cleanEventDescription(event.description || ""))}</div>
+          ${eventLocation ? `<div class="event-location">${escapeHtml(eventLocation)}</div>` : ""}
+        </div>
+      `;
+      timeline.appendChild(item);
+    });
+
+    if (timelineToggle) {
+      if (shouldCollapseTimeline && hiddenCount > 0) {
+        timeline.classList.add("is-collapsed");
+        timelineToggle.hidden = false;
+        timelineToggle.textContent = `Show more (${hiddenCount})`;
+        timelineToggle.dataset.expanded = "false";
+        timelineToggle.onclick = () => {
+          const expanded = timelineToggle.dataset.expanded === "true";
+          if (expanded) {
+            timeline.classList.add("is-collapsed");
+            timelineToggle.dataset.expanded = "false";
+            timelineToggle.textContent = `Show more (${hiddenCount})`;
+          } else {
+            timeline.classList.remove("is-collapsed");
+            timelineToggle.dataset.expanded = "true";
+            timelineToggle.textContent = "Show less";
+          }
+        };
+      } else {
+        timeline.classList.remove("is-collapsed");
+        timelineToggle.hidden = true;
+        timelineToggle.onclick = null;
+      }
+    }
+
+    return node;
+  }
+
+  function getTabStatusLabel(shipment) {
+    return formatStatusText(shipment.normalizedStatus || shipment.providerStatus || "unknown");
+  }
+
+  function renderShipmentTabs(shipments) {
+    if (!shipmentTabs) return;
+    shipmentTabs.innerHTML = "";
+    shipmentTabs.hidden = shipments.length <= 1;
+    if (shipments.length <= 1) return;
+
+    shipments.forEach((shipment, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "shipment-tab-button";
+      if (index === activeShipmentIndex) {
+        button.classList.add("is-active");
+      }
+      button.setAttribute("aria-pressed", index === activeShipmentIndex ? "true" : "false");
+      button.innerHTML = `
+        <span class="shipment-tab-label">Package ${index + 1}</span>
+        <span class="shipment-tab-status">${escapeHtml(getTabStatusLabel(shipment))}</span>
+      `;
+      button.addEventListener("click", () => {
+        activeShipmentIndex = index;
+        renderShipments(shipments);
+      });
+      shipmentTabs.appendChild(button);
+    });
+  }
+
   function renderShipments(shipments) {
     resultsList.innerHTML = "";
     emptyState.hidden = shipments.length > 0;
     const totalShipments = shipments.length;
+    activeShipmentIndex = Math.min(activeShipmentIndex, Math.max(totalShipments - 1, 0));
+
     if (sharedOrderSummaryPanel) {
       sharedOrderSummaryPanel.hidden = true;
     }
-
-    if (totalShipments > 1 && sharedOrderSummaryPanel) {
-      const sharedSummarySource = shipments.find((shipment) => shipment && shipment.orderSummary && shipment.orderSummary.orderName);
-      renderOrderSummaryPanel(sharedOrderSummaryPanel, sharedSummarySource ? sharedSummarySource.orderSummary : null);
+    if (shipmentTabs) {
+      shipmentTabs.hidden = true;
+      shipmentTabs.innerHTML = "";
     }
 
-    shipments.forEach((shipment, index) => {
-      const node = template.content.firstElementChild.cloneNode(true);
-      const packageLabel = node.querySelector(".shipment-package-label");
-      node.querySelector(".carrier-name").textContent = shipment.carrierName || shipment.carrierCode || "Carrier pending";
-      node.querySelector(".tracking-number").textContent = getPrimaryShipmentLabel(shipment);
-      node.querySelector(".shipment-summary-line").textContent = getSummarySentence(shipment);
-      renderOrderSummary(node, shipment.orderSummary);
-      if (packageLabel) {
-        packageLabel.hidden = totalShipments <= 1;
-        if (totalShipments > 1) {
-          packageLabel.textContent = `Package ${index + 1} of ${totalShipments}`;
-        }
-      }
+    if (!totalShipments) {
+      return;
+    }
+
+    const sharedSummarySource = shipments.find((shipment) => shipment && shipment.orderSummary && shipment.orderSummary.orderName);
+    if (sharedOrderSummaryPanel) {
       if (totalShipments > 1) {
-        const orderPanel = node.querySelector(".order-summary-panel");
-        if (orderPanel) orderPanel.hidden = true;
+        renderOrderSummaryPanel(sharedOrderSummaryPanel, sharedSummarySource ? sharedSummarySource.orderSummary : null);
+      } else {
+        sharedOrderSummaryPanel.hidden = true;
       }
+    }
 
-      const timeline = node.querySelector(".timeline");
-      const timelineToggle = node.querySelector(".timeline-toggle");
-      node.querySelector(".destination").textContent = shipment.destinationCountry || "-";
-      node.dataset.status = shipment.normalizedStatus || "unknown";
-      const lastMileCard = node.querySelector(".last-mile-card");
-      const lastMileNumber = normalizeDisplayText(shipment.lastMileTrackingNumber);
-      if (lastMileCard) {
-        lastMileCard.hidden = !lastMileNumber;
-        if (lastMileNumber) {
-          node.querySelector(".last-mile-tracking-number").textContent = lastMileNumber;
-        }
-      }
-
-      const timelineData = collapseOriginEvents(shipment.events || [], shipment);
-      const events = timelineData.events;
-      node.querySelector(".event-count").textContent = events.length
-        ? `${events.length} updates`
-        : "No scans yet";
-      node.querySelector(".dispatched-at").textContent = formatDate(
-        timelineData.dispatchEvent && (timelineData.dispatchEvent.eventTime || timelineData.dispatchEvent.time)
-      );
-      node.querySelector(".updated-at-secondary").textContent = formatDate(shipment.updatedAt);
-      node.querySelector(".status-detail").textContent = normalizeDisplayText(
-        formatStatusText(shipment.providerStatus) || formatStatusText(shipment.normalizedStatus) || "-"
-      ) || "-";
-
-      const supportNotice = node.querySelector(".support-notice");
-      const shouldShowNotice = !events.length || ["exception", "failed_attempt", "unknown", "not_found"].includes(shipment.normalizedStatus);
-      const supportText = getSupportNoticeText(shipment, events);
-      supportNotice.textContent = supportText;
-      supportNotice.hidden = !supportText || (!shouldShowNotice && shipment.normalizedStatus !== "delivered");
-
-      const providerStatus = node.querySelector(".provider-status");
-      const providerText = normalizeDisplayText(cleanEventDescription(shipment.providerStatusDescription));
-      providerStatus.textContent = providerText;
-      providerStatus.hidden = shipment.normalizedStatus === "delivered"
-        || !providerText
-        || providerText === node.querySelector(".status-detail").textContent;
-
-      const activeIndex = PROGRESS_ORDER.indexOf(shipment.normalizedStatus);
-      node.querySelectorAll(".shipment-progress span").forEach((step, index) => {
-        step.classList.toggle("is-active", index <= activeIndex && activeIndex >= 0);
-      });
-      if (!events.length) {
-        const item = document.createElement("li");
-        item.className = "empty-event";
-        const emptyTimelineTitle = isCarrierUpdatePending(shipment, events)
-          ? "The carrier has not shared any tracking scans yet."
-          : "No tracking timeline is available yet.";
-        item.innerHTML = `
-            <time>-</time>
-            <div class="event-text">
-              <div class="event-title">${emptyTimelineTitle}</div>
-            </div>
-          `;
-        timeline.appendChild(item);
-        timeline.classList.remove("is-collapsed");
-        if (timelineToggle) timelineToggle.hidden = true;
-      }
-
-      const collapseThreshold = TIMELINE_PINNED_RECENT_COUNT + TIMELINE_PINNED_EARLIEST_COUNT + 1;
-      const shouldCollapseTimeline = events.length > collapseThreshold;
-      const hiddenStartIndex = TIMELINE_PINNED_RECENT_COUNT;
-      const hiddenEndIndex = events.length - TIMELINE_PINNED_EARLIEST_COUNT - 1;
-      let hiddenCount = 0;
-
-      events.forEach((event, index) => {
-        const item = document.createElement("li");
-        const eventTime = event.eventTime || event.time;
-        const eventLocation = formatLocation(event.location, shipment);
-        if (shouldCollapseTimeline && index >= hiddenStartIndex && index <= hiddenEndIndex) {
-          item.dataset.hidden = "true";
-          hiddenCount += 1;
-        }
-        item.innerHTML = `
-          <time>${escapeHtml(formatDate(eventTime))}</time>
-          <div class="event-text">
-            <div class="event-title">${escapeHtml(cleanEventDescription(event.description || ""))}</div>
-            ${eventLocation ? `<div class="event-location">${escapeHtml(eventLocation)}</div>` : ""}
-          </div>
-        `;
-        timeline.appendChild(item);
-      });
-
-      if (timelineToggle) {
-        if (shouldCollapseTimeline && hiddenCount > 0) {
-          timeline.classList.add("is-collapsed");
-          timelineToggle.hidden = false;
-          timelineToggle.textContent = `Show more (${hiddenCount})`;
-          timelineToggle.dataset.expanded = "false";
-          timelineToggle.onclick = () => {
-            const expanded = timelineToggle.dataset.expanded === "true";
-            if (expanded) {
-              timeline.classList.add("is-collapsed");
-              timelineToggle.dataset.expanded = "false";
-              timelineToggle.textContent = `Show more (${hiddenCount})`;
-            } else {
-              timeline.classList.remove("is-collapsed");
-              timelineToggle.dataset.expanded = "true";
-              timelineToggle.textContent = "Show less";
-            }
-          };
-        } else {
-          timeline.classList.remove("is-collapsed");
-          timelineToggle.hidden = true;
-          timelineToggle.onclick = null;
-        }
-      }
-
-      resultsList.appendChild(node);
-    });
+    renderShipmentTabs(shipments);
+    const activeShipment = shipments[activeShipmentIndex] || shipments[0];
+    resultsList.appendChild(renderShipmentCard(activeShipment, activeShipmentIndex, totalShipments));
   }
 
   async function queryTracking(numbers) {
