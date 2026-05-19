@@ -330,12 +330,15 @@
 
 .order-items-block {
   grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .order-items-grid {
   margin-top: 8px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+  min-width: 0;
 }
 
 .order-item-card {
@@ -343,6 +346,8 @@
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 14px;
   align-items: center;
+  width: 100%;
+  min-width: 0;
   padding: 12px;
   background: #fff;
   border: 1px solid var(--line);
@@ -374,6 +379,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   gap: 14px;
+  min-width: 0;
 }
 
 .order-item-title {
@@ -384,7 +390,8 @@
   font-weight: 500;
   line-height: 1.5;
   text-decoration: none;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .order-item-price {
