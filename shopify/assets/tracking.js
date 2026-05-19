@@ -26,9 +26,9 @@
     delivered: "Delivered",
     exception: "Exception",
     failed_attempt: "Delivery attempt failed",
-    not_found: "No tracking updates",
+    not_found: "Carrier updates pending",
     expired: "Tracking expired",
-    unknown: "Unknown"
+    unknown: "Carrier updates pending"
   };
   const PROGRESS_ORDER = ["info_received", "in_transit", "out_for_delivery", "delivered"];
   const ORIGIN_LOCATION_KEYWORDS = [
@@ -53,9 +53,9 @@
     delivered: "Your order has been delivered.",
     exception: "There is an issue with this delivery.",
     failed_attempt: "A delivery attempt was unsuccessful.",
-    not_found: "Tracking updates are not available yet.",
+    not_found: "The carrier has not shared tracking updates for this parcel yet.",
     expired: "This tracking record has expired.",
-    unknown: "We are checking the latest delivery updates."
+    unknown: "The carrier has not shared tracking updates for this parcel yet."
   };
   const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -165,6 +165,26 @@
       return "This order has not been shipped yet.";
     }
     return STATUS_SENTENCES[shipment.normalizedStatus] || "Tracking updates are available below.";
+  }
+
+  function isCarrierUpdatePending(shipment, events) {
+    return Boolean(
+      shipment
+      && !events.length
+      && ["unknown", "not_found"].includes(shipment.normalizedStatus)
+    );
+  }
+
+  function getSupportNoticeText(shipment, events) {
+    const supportText = extractSupportText(shipment.providerStatusDescription)
+      || extractSupportText(shipment.statusText)
+      || shipment.supportNotice
+      || "";
+    if (supportText) return supportText;
+    if (isCarrierUpdatePending(shipment, events)) {
+      return "The tracking number was found, but the carrier has not shared any scan events yet.";
+    }
+    return "";
   }
 
   function formatCountryName(value) {
@@ -433,10 +453,7 @@
 
       const supportNotice = node.querySelector(".support-notice");
       const shouldShowNotice = !events.length || ["exception", "failed_attempt", "unknown", "not_found"].includes(shipment.normalizedStatus);
-      const supportText = extractSupportText(shipment.providerStatusDescription)
-        || extractSupportText(shipment.statusText)
-        || shipment.supportNotice
-        || "";
+      const supportText = getSupportNoticeText(shipment, events);
       supportNotice.textContent = supportText;
       supportNotice.hidden = !supportText || (!shouldShowNotice && shipment.normalizedStatus !== "delivered");
 
@@ -454,12 +471,15 @@
       if (!events.length) {
         const item = document.createElement("li");
         item.className = "empty-event";
+        const emptyTimelineTitle = isCarrierUpdatePending(shipment, events)
+          ? "The carrier has not shared any tracking scans yet."
+          : "No tracking timeline is available yet.";
         item.innerHTML = `
-          <time>-</time>
-          <div class="event-text">
-            <div class="event-title">No tracking timeline is available yet.</div>
-          </div>
-        `;
+            <time>-</time>
+            <div class="event-text">
+              <div class="event-title">${emptyTimelineTitle}</div>
+            </div>
+          `;
         timeline.appendChild(item);
         timeline.classList.remove("is-collapsed");
         if (timelineToggle) timelineToggle.hidden = true;
