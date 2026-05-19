@@ -69,6 +69,17 @@
   const COUNTRY_FORMATTER = typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function"
     ? new Intl.DisplayNames(["en"], { type: "region" })
     : null;
+  const LOCATION_ENRICHMENT_MAP = {
+    US: {
+      carteret: ["Carteret", "New Jersey"],
+      hampton: ["Hampton", "Virginia"],
+      williamsburg: ["Williamsburg", "Virginia"],
+      newark: ["Newark", "New Jersey"],
+      vernon: ["Vernon", "California"],
+      dublin: ["Dublin", "California"],
+      columbia: ["Columbia", "South Carolina"]
+    }
+  };
   let cooldownTimer = null;
   let cooldownRemaining = 0;
   let queryMode = "tracking";
@@ -198,7 +209,31 @@
     return normalizeDisplayText(value);
   }
 
+  function getCountryCode(value) {
+    const text = normalizeDisplayText(value).toUpperCase();
+    if (!text) return "";
+    if (/^[A-Z]{2}$/.test(text)) return text;
+    return "";
+  }
+
+  function enrichLocationText(locationText, countryCode, countryName) {
+    const compact = normalizeDisplayText(locationText);
+    if (!compact) return "";
+    if (countryCode && compact.toUpperCase() === countryCode) {
+      return countryName || compact;
+    }
+    if (!countryCode || compact.includes(",")) {
+      return compact;
+    }
+    const cityMap = LOCATION_ENRICHMENT_MAP[countryCode];
+    if (!cityMap) return compact;
+    const match = cityMap[compact.toLowerCase()];
+    if (!match) return compact;
+    return [...match, countryName].filter(Boolean).join(", ");
+  }
+
   function formatLocation(value, shipment) {
+    const destinationCountryCode = getCountryCode(shipment && shipment.destinationCountry);
     const destinationCountry = formatCountryName(shipment && shipment.destinationCountry);
     if (!value) return "";
     if (typeof value === "object") {
@@ -211,7 +246,7 @@
       ].filter(Boolean);
       return parts.join(", ");
     }
-    const locationText = normalizeDisplayText(value);
+    const locationText = enrichLocationText(value, destinationCountryCode, destinationCountry);
     if (!locationText) return destinationCountry;
     if (!destinationCountry) return locationText;
     const lowerLocation = locationText.toLowerCase();
