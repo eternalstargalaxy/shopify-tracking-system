@@ -526,7 +526,7 @@
   }
 
   async function submitQuery() {
-    trackButton.disabled = true;
+    let shouldStartCooldown = false;
 
     try {
       let data;
@@ -538,6 +538,8 @@
           setTrackButtonLabel();
           return;
         }
+        trackButton.disabled = true;
+        shouldStartCooldown = true;
         setMessage(`Looking up order ${orderNumber}...`);
         data = await queryOrder(orderNumber);
       } else {
@@ -558,6 +560,8 @@
           setTrackButtonLabel();
           return;
         }
+        trackButton.disabled = true;
+        shouldStartCooldown = true;
         setMessage(`Tracking ${numbers.length} shipment${numbers.length > 1 ? "s" : ""}...`);
         data = await queryTracking(numbers);
       }
@@ -576,7 +580,9 @@
       resultsList.innerHTML = "";
       console.error(error);
     } finally {
-      startCooldown();
+      if (shouldStartCooldown) {
+        startCooldown();
+      }
     }
   }
 
