@@ -10,6 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from .config import settings
 from .db import (
@@ -37,8 +38,8 @@ def log_event(event: str, *, level: str = "info", message: str | None = None, **
     insert_system_event(event, level, message, fields)
 
 
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+def _beijing_now_text() -> str:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S UTC+08:00")
 
 
 def _is_feishu_webhook(url: str) -> bool:
@@ -57,7 +58,7 @@ def _build_alert_payload(event: str, level: str, message: str, fields: dict[str,
     if _is_feishu_webhook(settings.alert_webhook_url):
         lines = [
             f"[tracking-alert] [{settings.app_name}] [{level.upper()}] {event}",
-            f"Time: {_utc_now_text()}",
+            f"Time (Asia/Shanghai): {_beijing_now_text()}",
             f"Message: {message}",
         ]
         if fields:
