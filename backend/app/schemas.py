@@ -62,6 +62,7 @@ class OrderSummary(BaseModel):
     placed_at: str | None = Field(default=None, alias="placedAt")
     fulfillment_status: str | None = Field(default=None, alias="fulfillmentStatus")
     financial_status: str | None = Field(default=None, alias="financialStatus")
+    shipping_required: bool | None = Field(default=None, alias="shippingRequired")
     total_amount: str | None = Field(default=None, alias="totalAmount")
     currency_code: str | None = Field(default=None, alias="currencyCode")
     source: str | None = None

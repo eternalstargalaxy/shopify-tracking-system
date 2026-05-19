@@ -192,6 +192,28 @@ def build_unshipped_admin_order_shipment(order_summary: object) -> TrackingShipm
     )
 
 
+def build_no_shipment_required_admin_order_shipment(order_summary: object) -> TrackingShipment:
+    now = datetime.now(timezone.utc).isoformat()
+    return TrackingShipment(
+        trackingNumber="",
+        carrierCode=None,
+        carrierName=None,
+        lastMileTrackingNumber=None,
+        normalizedStatus="unknown",
+        statusText="No shipment required",
+        providerStatus="No shipment required",
+        providerStatusDescription="This order does not require shipping.",
+        originCountry=None,
+        destinationCountry=None,
+        lastEventTime=None,
+        updatedAt=now,
+        supportNotice="This order does not require shipping.",
+        cached=False,
+        orderSummary=order_summary,
+        events=[],
+    )
+
+
 def _order_has_unshipped_remainder(fulfillment_status: str | None) -> bool:
     normalized = str(fulfillment_status or "").strip().lower()
     return normalized in {"partially fulfilled", "partial", "partially_shipped"}
@@ -499,6 +521,18 @@ def query_order_tracking(
                 order_name=admin_lookup.order_summary.order_name,
                 source="shopify_admin",
             )
+
+        if not admin_lookup.tracking_numbers and admin_lookup.order_summary.shipping_required is False:
+            shipment = build_no_shipment_required_admin_order_shipment(admin_lookup.order_summary)
+            log_event(
+                "order_lookup_no_shipment_required",
+                order_number=normalized_order_number,
+                email=normalized_email,
+                shop_domain=shop_domain,
+                order_name=admin_lookup.order_summary.order_name,
+                source="shopify_admin",
+            )
+            return [shipment], []
 
         if admin_lookup.shipment_pending:
             shipment = build_unshipped_admin_order_shipment(admin_lookup.order_summary)

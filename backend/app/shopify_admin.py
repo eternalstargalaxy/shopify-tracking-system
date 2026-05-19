@@ -32,6 +32,7 @@ query OrderSummaryByName($query: String!) {
         nodes {
           name
           quantity
+          requiresShipping
           variantTitle
           image {
             url
@@ -543,6 +544,7 @@ def merge_order_summaries(primary: OrderSummary | None, fallback: OrderSummary |
         placedAt=primary.placed_at or fallback.placed_at,
         fulfillmentStatus=primary.fulfillment_status or fallback.fulfillment_status,
         financialStatus=primary.financial_status or fallback.financial_status,
+        shippingRequired=primary.shipping_required if primary.shipping_required is not None else fallback.shipping_required,
         totalAmount=primary.total_amount or fallback.total_amount,
         currencyCode=primary.currency_code or fallback.currency_code,
         source=primary.source or fallback.source,
@@ -558,29 +560,44 @@ def _format_admin_status(value: str | None) -> str | None:
 
 def _parse_order_summary(order: dict[str, Any]) -> OrderSummary:
     price = (((order.get("currentTotalPriceSet") or {}).get("shopMoney")) or {})
-    line_items = ((order.get("lineItems") or {}).get("nodes")) or []
+    line_items = ((order.get("lineItems") or {}).get("nodes")) or order.get("line_items") or []
     items = []
+    shipping_flags: list[bool] = []
     for item in line_items:
         unit_price = (((item.get("originalUnitPriceSet") or {}).get("shopMoney")) or {})
+        if not unit_price:
+            unit_price = item.get("price_set", {}).get("shop_money") or {}
         image = item.get("image") or {}
+        if isinstance(image, str):
+            image = {"url": image}
+        requires_shipping = item.get("requiresShipping")
+        if requires_shipping is None:
+            requires_shipping = item.get("requires_shipping")
+        if isinstance(requires_shipping, bool):
+            shipping_flags.append(requires_shipping)
         items.append(
             OrderSummaryItem(
-                title=(item.get("name") or "").strip() or "Item",
+                title=(item.get("name") or item.get("title") or "").strip() or "Item",
                 quantity=int(item.get("quantity") or 1),
-                variant=(item.get("variantTitle") or "").strip() or None,
+                variant=(item.get("variantTitle") or item.get("variant_title") or "").strip() or None,
                 imageUrl=(image.get("url") or "").strip() or None,
                 unitPrice=_format_unit_price(unit_price.get("amount"), unit_price.get("currencyCode")),
-                currencyCode=unit_price.get("currencyCode"),
+                currencyCode=unit_price.get("currencyCode") or unit_price.get("currency_code"),
             )
         )
 
+    shipping_required = None
+    if shipping_flags:
+        shipping_required = any(shipping_flags)
+
     return OrderSummary(
         orderName=order.get("name"),
-        placedAt=order.get("processedAt"),
-        fulfillmentStatus=_format_admin_status(order.get("displayFulfillmentStatus")),
-        financialStatus=_format_admin_status(order.get("displayFinancialStatus")),
+        placedAt=order.get("processedAt") or order.get("processed_at"),
+        fulfillmentStatus=_format_admin_status(order.get("displayFulfillmentStatus") or order.get("display_fulfillment_status")),
+        financialStatus=_format_admin_status(order.get("displayFinancialStatus") or order.get("display_financial_status")),
+        shippingRequired=shipping_required,
         totalAmount=price.get("amount"),
-        currencyCode=price.get("currencyCode"),
+        currencyCode=price.get("currencyCode") or price.get("currency_code"),
         items=items,
         source="shopify_admin",
     )

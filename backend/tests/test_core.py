@@ -1164,6 +1164,55 @@ class CoreTests(unittest.TestCase):
                 services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
                 services_module.storefront_client.lookup_by_order = original_lookup_by_order
 
+    def test_query_order_tracking_returns_no_shipment_required_shopify_admin_order(self) -> None:
+        class FakeClient:
+            def register(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.fail("register should not be called for a non-shipping Shopify order")
+
+            def get_track_info(self, tracking_number: str, carrier_code: str | None) -> dict:
+                self.fail("get_track_info should not be called for a non-shipping Shopify order")
+
+        admin_lookup = shopify_admin_module.ShopifyOrderLookup(
+            order_summary=OrderSummary(
+                orderName="LC8179191",
+                fulfillmentStatus="Fulfilled",
+                shippingRequired=False,
+                source="shopify_admin",
+            ),
+            tracking_numbers=[],
+            shipment_pending=False,
+        )
+
+        original_db_path = config_module.settings.database_path
+        original_lookup_by_order = services_module.storefront_client.lookup_by_order
+        original_admin_lookup = services_module.shopify_admin_client.lookup_order_by_name_and_email
+        with workspace_temp_dir() as temp_dir:
+            try:
+                object.__setattr__(config_module.settings, "database_path", str(temp_dir / "test.sqlite3"))
+                init_db()
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = (
+                    lambda *_args, **_kwargs: admin_lookup
+                )
+                services_module.storefront_client.lookup_by_order = (
+                    lambda *_args, **_kwargs: self.fail("storefront order lookup should not run when Shopify Admin already matched")
+                )
+                shipments, errors = query_order_tracking(
+                    FakeClient(),
+                    "LC8179191",
+                    None,
+                    "demo.myshopify.com",
+                )
+                self.assertFalse(errors)
+                self.assertEqual(len(shipments), 1)
+                self.assertEqual(shipments[0].tracking_number, "")
+                self.assertEqual(shipments[0].status_text, "No shipment required")
+                self.assertEqual(shipments[0].provider_status, "No shipment required")
+                self.assertEqual(shipments[0].order_summary.order_name, "LC8179191")
+            finally:
+                object.__setattr__(config_module.settings, "database_path", original_db_path)
+                services_module.shopify_admin_client.lookup_order_by_name_and_email = original_admin_lookup
+                services_module.storefront_client.lookup_by_order = original_lookup_by_order
+
     def test_process_tracking_number_refreshes_empty_unknown_cache_without_fc(self) -> None:
         class FakeClient:
             def register(self, tracking_number: str, carrier_code: str | None) -> dict:
